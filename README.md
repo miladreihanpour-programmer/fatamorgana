@@ -101,7 +101,7 @@ After each run, the two Excel files (`shocapp_template_filled.xlsx` and `shocapp
 To set up:
 1. Get the bot token from [@BotFather](https://t.me/BotFather)
 2. Add `TELEGRAM_BOT_TOKEN` to your `.env` (local) or GitHub Secrets (CI)
-3. The chat ID (`104393673`) is pre-configured
+3. Set your `TELEGRAM_CHAT_ID` in `.env` (local) or GitHub Secrets (CI)
 
 If the token is not set, the Telegram step is skipped with a warning.
 
@@ -145,8 +145,68 @@ Input format examples:
 - Credentials are stored in `.env` (local) or GitHub Secrets (CI) — never committed.
 - `.env`, cookies, and session files are gitignored.
 
-# Pull/Push
+## Terminal Commands (PowerShell)
 
+### First-time setup
+
+```powershell
+cd D:\fata
+npm install
+npx playwright install chromium
+```
+
+### Run extractor
+
+```powershell
+run src/shocappExtractor.js
+```
+
+### Run extractor without email auto-send (recommended on local Windows if TLS cert errors appear)
+
+```powershell
+$env:AUTO_SEND_EMAIL='false'
+run src/shocappExtractor.js
+```
+
+### Run Telegram bot
+
+```powershell
+run src/telegramBot.js
+```
+
+### Local equivalent of `weekly-extract-bot.yml`
+
+```powershell
+$env:AUTO_SEND_TELEGRAM='false'
+$env:AUTO_SEND_EMAIL='false'
+run src/shocappExtractor.js
+run src/telegramBot.js
+```
+
+### Manual Git commands
+
+```powershell
 git add -A
 git commit -m "Update"
 git push
+```
+
+### Project push/pull scripts
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\push.ps1
+powershell -ExecutionPolicy Bypass -File .\pull.ps1
+```
+
+### Shortcuts (if configured in your PowerShell profile)
+
+```powershell
+gpush
+gpull
+```
+
+### Run GitHub Actions workflow from terminal
+
+```powershell
+gh workflow run weekly-extract-bot.yml -R miladreihanpour-programmer/fatamorgana
+```

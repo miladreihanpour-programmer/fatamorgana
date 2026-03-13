@@ -57,7 +57,8 @@ const FILTER_PRESETS = [
  * Returns the raw HTML response (table head + body).
  */
 async function fetchShocappTable(bPage, preset, pageNum = 1) {
-  return bPage.evaluate(({ p, pg }) => {
+  const ajaxUser = process.env.GELATERIA_USER ?? '';
+  return bPage.evaluate(({ p, pg, u }) => {
     const now = new Date();
     const pad = (n) => String(n).padStart(2, '0');
     const dateStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
@@ -71,7 +72,7 @@ async function fetchShocappTable(bPage, preset, pageNum = 1) {
       date1: dateStr, date2: dateStr,
       shop: '', sStatus: p.selStatus, sCausale: '',
       m: '100', p: String(pg), o_by: '', o_mode: 'asc',
-      lng: '1', lid: '31', usr: process.env.GELATERIA_USER ?? '',
+      lng: '1', lid: '31', usr: u,
     });
 
     return new Promise((resolve, reject) => {
@@ -82,7 +83,7 @@ async function fetchShocappTable(bPage, preset, pageNum = 1) {
         error: (xhr, status, err) => reject(new Error(status + ': ' + err)),
       });
     });
-  }, { p: preset, pg: pageNum });
+  }, { p: preset, pg: pageNum, u: ajaxUser });
 }
 
 /**
@@ -233,11 +234,48 @@ const TEMPLATE_TO_DATA = {
   'PASSION':              'PASSION FRUIT',
   'PENSIERO':             'PENSIERO',
   'PERA':                 'PERA',
-  'PERA GORGONZOLA':      'BANACHI, BANANA ARACHIDI & CARAMELLO',
+  'PERA GORGONZOLA':      'PERA GORGONZOLA',
   'PESCA AL VINO':        'PESCHE AL VINO',
   'CREMA MASCARPONE':     'CREMA MASCARPONE',
-  'ZUCCA E SEMI':         'SEMIFREDDO  TIRAMISU',
+  'ZUCCA E SEMI':         'ZUCCA E SEMI',
 };
+
+const AMBIGUOUS_TARGETS = (() => {
+  const reverse = new Map();
+  for (const [alias, target] of Object.entries(TEMPLATE_TO_DATA)) {
+    if (!reverse.has(target)) reverse.set(target, []);
+    reverse.get(target).push(alias);
+  }
+
+  const ambiguous = new Set();
+  for (const [target, aliases] of reverse.entries()) {
+    if (aliases.length > 1) {
+      ambiguous.add(target);
+    }
+  }
+  return ambiguous;
+})();
+
+function resolveDataFlavorName(templateName, qtyMap) {
+  if (!templateName) return null;
+
+  const clean = String(templateName).trim();
+
+  // 1) Strict exact match first (safest)
+  if (qtyMap.has(clean)) {
+    return clean;
+  }
+
+  // 2) Fallback alias map only when unambiguous
+  const mapped = TEMPLATE_TO_DATA[clean];
+  if (!mapped) return null;
+
+  if (AMBIGUOUS_TARGETS.has(mapped)) {
+    return null;
+  }
+
+  return mapped;
+}
 
 /**
  * Read the Excel template, fill in Qty columns from Da Ordinare data, save.
@@ -263,7 +301,7 @@ function fillExcelTemplate(daOrdinareRows) {
       const templateName = data[r]?.[flavorCols[f]];
       if (!templateName) continue;
 
-      const dataName = TEMPLATE_TO_DATA[templateName];
+      const dataName = resolveDataFlavorName(templateName, qtyMap);
       if (!dataName) continue;
 
       const qty = qtyMap.get(dataName) ?? 0;

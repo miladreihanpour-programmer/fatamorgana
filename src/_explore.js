@@ -18,10 +18,11 @@ await page.waitForTimeout(5000);
 // Build the exact URL from the user's manual browser request
 // with SelStatus=3 (Esaurito) and SelData=2 (Ultimi 7 giorni)
 const now = new Date().toISOString().slice(0, 16).replace('T', ' ');
+const ajaxUser = encodeURIComponent(process.env.GELATERIA_USER ?? '');
 
 // Test 1: Direct AJAX with SelStatus=3 (Esaurito) — EXACTLY like user's browser
 console.log('=== TEST 1: Direct AJAX SelStatus=3 SelData=2 (no fridge) ===');
-const html1 = await page.evaluate((d) => {
+const html1 = await page.evaluate(({ d, u }) => {
   return new Promise((resolve, reject) => {
     $.ajax({
       type: 'POST',
@@ -29,12 +30,12 @@ const html1 = await page.evaluate((d) => {
         + '&Selperiodo=1&SelData=2&SelStatus=3&SelTabella=1&SelFamiglia=&cercaStringa=&q='
         + '&searchrow=&searchcol=&datatable1_length=100'
         + '&date1=' + encodeURIComponent(d) + '&date2=' + encodeURIComponent(d)
-        + '&shop=&sStatus=3&sCausale=&m=100&p=1&o_by=&o_mode=asc&lng=1&lid=31&usr=' + encodeURIComponent(process.env.GELATERIA_USER ?? ''),
+        + '&shop=&sStatus=3&sCausale=&m=100&p=1&o_by=&o_mode=asc&lng=1&lid=31&usr=' + u,
       success: (response) => resolve(response),
       error: (xhr, status, err) => reject(status + ': ' + err)
     });
   });
-}, now);
+}, { d: now, u: ajaxUser });
 console.log('Response length:', html1.length, 'bytes');
 console.log('First 1500 chars:', html1.substring(0, 1500));
 
@@ -47,7 +48,7 @@ console.log('Status counts:', statuses1);
 
 // Test 2: Direct AJAX with SelStatus=1 (Mantenimento) for comparison
 console.log('\n=== TEST 2: Direct AJAX SelStatus=1 SelData=6 (no fridge) ===');
-const html2 = await page.evaluate((d) => {
+const html2 = await page.evaluate(({ d, u }) => {
   return new Promise((resolve, reject) => {
     $.ajax({
       type: 'POST',
@@ -55,12 +56,12 @@ const html2 = await page.evaluate((d) => {
         + '&Selperiodo=1&SelData=6&SelStatus=1&SelTabella=1&SelFamiglia=&cercaStringa=&q='
         + '&searchrow=&searchcol=&datatable1_length=100'
         + '&date1=' + encodeURIComponent(d) + '&date2=' + encodeURIComponent(d)
-        + '&shop=&sStatus=1&sCausale=&m=100&p=1&o_by=&o_mode=asc&lng=1&lid=31&usr=' + encodeURIComponent(process.env.GELATERIA_USER ?? ''),
+        + '&shop=&sStatus=1&sCausale=&m=100&p=1&o_by=&o_mode=asc&lng=1&lid=31&usr=' + u,
       success: (response) => resolve(response),
       error: (xhr, status, err) => reject(status + ': ' + err)
     });
   });
-}, now);
+}, { d: now, u: ajaxUser });
 console.log('Response length:', html2.length, 'bytes');
 
 const statuses2 = {};
@@ -71,7 +72,7 @@ console.log('Status counts:', statuses2);
 
 // Test 3: WITH fridge sel_frigo=2_1 + SelStatus=3
 console.log('\n=== TEST 3: Direct AJAX SelStatus=3 SelData=2 sel_frigo=2_1 ===');
-const html3 = await page.evaluate((d) => {
+const html3 = await page.evaluate(({ d, u }) => {
   return new Promise((resolve, reject) => {
     $.ajax({
       type: 'POST',
@@ -79,12 +80,12 @@ const html3 = await page.evaluate((d) => {
         + '&Selperiodo=1&SelData=2&SelStatus=3&SelTabella=1&SelFamiglia=&cercaStringa=&q='
         + '&searchrow=&searchcol=&datatable1_length=100'
         + '&date1=' + encodeURIComponent(d) + '&date2=' + encodeURIComponent(d)
-        + '&shop=&sStatus=3&sCausale=&m=100&p=1&o_by=&o_mode=asc&lng=1&lid=31&usr=' + encodeURIComponent(process.env.GELATERIA_USER ?? ''),
+        + '&shop=&sStatus=3&sCausale=&m=100&p=1&o_by=&o_mode=asc&lng=1&lid=31&usr=' + u,
       success: (response) => resolve(response),
       error: (xhr, status, err) => reject(status + ': ' + err)
     });
   });
-}, now);
+}, { d: now, u: ajaxUser });
 console.log('Response length:', html3.length, 'bytes');
 
 const statuses3 = {};
