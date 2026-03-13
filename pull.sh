@@ -1,9 +1,9 @@
 #!/bin/bash
 cd "$(dirname "$0")"
 GITHUB_USER="miladreihanpour-programmer"
-REPO_NAME="${1:-$(basename "$(git rev-parse --show-toplevel)")}"
+REPO_NAME="${1:-fatamorgana}"
 BRANCH_NAME="$(git branch --show-current)"
-SSH_KEY_PATH="${SSH_KEY_PATH:-/c/Users/$USERNAME/.ssh/id_ed25519_github}"
+SSH_KEY_PATH="${SSH_KEY_PATH:-/c/Users/$USERNAME/.ssh/id_ed25519_milad}"
 
 if [ -z "$BRANCH_NAME" ]; then
 	BRANCH_NAME="main"

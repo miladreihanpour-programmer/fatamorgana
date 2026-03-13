@@ -38,10 +38,10 @@ jobs:
           GELATERIA_USER: ${{ secrets.GELATERIA_USER }}
           GELATERIA_PASS: ${{ secrets.GELATERIA_PASS }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: '104393673'
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           EMAIL_USER: ${{ secrets.EMAIL_USER }}
           EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
-          EMAIL_TO: 'miladreihanpour@gmail.com,saeedgar@yahoo.com'
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
         run: node src/shocappExtractor.js
 
       - name: Upload XLSX/ZIP artifacts

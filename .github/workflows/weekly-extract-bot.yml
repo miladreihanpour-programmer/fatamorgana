@@ -36,10 +36,10 @@ jobs:
           GELATERIA_USER: ${{ secrets.GELATERIA_USER }}
           GELATERIA_PASS: ${{ secrets.GELATERIA_PASS }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: '104393673'
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           EMAIL_USER: ${{ secrets.EMAIL_USER }}
           EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
-          EMAIL_TO: 'miladreihanpour@gmail.com,saeedgar@yahoo.com'
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
           AUTO_SEND_TELEGRAM: 'false'
           AUTO_SEND_EMAIL: 'false'
         run: node src/shocappExtractor.js
@@ -62,7 +62,7 @@ jobs:
       - name: Start Telegram bot (keeps alive for up to 6 hours)
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: '104393673'
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           EMAIL_USER: ${{ secrets.EMAIL_USER }}
           EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
         run: |
@@ -70,7 +70,7 @@ jobs:
           node -e "
             const https = require('https');
             const body = JSON.stringify({
-              chat_id: '104393673',
+              chat_id: process.env.TELEGRAM_CHAT_ID,
               text: '🤖 Bot attivo per 6 ore. Usa /start per richiedere i file.'
             });
             const req = https.request({

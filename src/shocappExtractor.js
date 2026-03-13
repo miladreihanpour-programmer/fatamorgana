@@ -71,7 +71,7 @@ async function fetchShocappTable(bPage, preset, pageNum = 1) {
       date1: dateStr, date2: dateStr,
       shop: '', sStatus: p.selStatus, sCausale: '',
       m: '100', p: String(pg), o_by: '', o_mode: 'asc',
-      lng: '1', lid: '31', usr: 'storoma10',
+      lng: '1', lid: '31', usr: process.env.GELATERIA_USER ?? '',
     });
 
     return new Promise((resolve, reject) => {
@@ -395,7 +395,7 @@ function sendTelegramFile(botToken, chatId, filePath) {
  */
 async function sendToTelegram() {
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
-  const chatIds = (process.env.TELEGRAM_CHAT_ID || '104393673')
+  const chatIds = (process.env.TELEGRAM_CHAT_ID || '')
     .split(',')
     .map(id => id.trim())
     .filter(Boolean);

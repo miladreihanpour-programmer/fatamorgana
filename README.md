@@ -12,8 +12,8 @@ Automated Node.js tool that logs into the Gelateria Fata Morgana tracking manage
 1. **Clone the repo and install dependencies:**
 
 ```bash
-git clone git@github.com:saeedzns/gelateria-extractor.git
-cd gelateria-extractor
+git clone git@github.com:miladreihanpour-programmer/fatamorgana.git
+cd fatamorgana
 npm install
 ```
 
@@ -89,8 +89,10 @@ Required GitHub secrets:
 - `GELATERIA_USER`
 - `GELATERIA_PASS`
 - `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_CHAT_ID`
 - `EMAIL_USER`
 - `EMAIL_PASS`
+- `EMAIL_TO`
 
 ## Telegram Notifications
 

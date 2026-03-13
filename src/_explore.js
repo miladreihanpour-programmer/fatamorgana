@@ -29,7 +29,7 @@ const html1 = await page.evaluate((d) => {
         + '&Selperiodo=1&SelData=2&SelStatus=3&SelTabella=1&SelFamiglia=&cercaStringa=&q='
         + '&searchrow=&searchcol=&datatable1_length=100'
         + '&date1=' + encodeURIComponent(d) + '&date2=' + encodeURIComponent(d)
-        + '&shop=&sStatus=3&sCausale=&m=100&p=1&o_by=&o_mode=asc&lng=1&lid=31&usr=storoma10',
+        + '&shop=&sStatus=3&sCausale=&m=100&p=1&o_by=&o_mode=asc&lng=1&lid=31&usr=' + encodeURIComponent(process.env.GELATERIA_USER ?? ''),
       success: (response) => resolve(response),
       error: (xhr, status, err) => reject(status + ': ' + err)
     });
@@ -55,7 +55,7 @@ const html2 = await page.evaluate((d) => {
         + '&Selperiodo=1&SelData=6&SelStatus=1&SelTabella=1&SelFamiglia=&cercaStringa=&q='
         + '&searchrow=&searchcol=&datatable1_length=100'
         + '&date1=' + encodeURIComponent(d) + '&date2=' + encodeURIComponent(d)
-        + '&shop=&sStatus=1&sCausale=&m=100&p=1&o_by=&o_mode=asc&lng=1&lid=31&usr=storoma10',
+        + '&shop=&sStatus=1&sCausale=&m=100&p=1&o_by=&o_mode=asc&lng=1&lid=31&usr=' + encodeURIComponent(process.env.GELATERIA_USER ?? ''),
       success: (response) => resolve(response),
       error: (xhr, status, err) => reject(status + ': ' + err)
     });
@@ -79,7 +79,7 @@ const html3 = await page.evaluate((d) => {
         + '&Selperiodo=1&SelData=2&SelStatus=3&SelTabella=1&SelFamiglia=&cercaStringa=&q='
         + '&searchrow=&searchcol=&datatable1_length=100'
         + '&date1=' + encodeURIComponent(d) + '&date2=' + encodeURIComponent(d)
-        + '&shop=&sStatus=3&sCausale=&m=100&p=1&o_by=&o_mode=asc&lng=1&lid=31&usr=storoma10',
+        + '&shop=&sStatus=3&sCausale=&m=100&p=1&o_by=&o_mode=asc&lng=1&lid=31&usr=' + encodeURIComponent(process.env.GELATERIA_USER ?? ''),
       success: (response) => resolve(response),
       error: (xhr, status, err) => reject(status + ': ' + err)
     });
