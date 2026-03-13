@@ -1,0 +1,20 @@
+node_modules/
+.env
+
+# Output files (gitignored by default)
+*.csv
+*.json
+
+# Allow tracked output files
+!output/shocapp_*.xlsx
+!output/shocapp_*.zip
+
+# Allow project config
+!package.json
+!package-lock.json
+
+# Session / cookie artifacts
+cookies/
+session/
+*.session
+*.cookies

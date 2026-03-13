@@ -1,0 +1,24 @@
+{
+  "name": "gelateria-extractor",
+  "version": "1.0.0",
+  "description": "HTTP-first extractor for authenticated pages on gelateriafatamorgana.com",
+  "main": "src/shocappExtractor.js",
+  "type": "module",
+  "scripts": {
+    "shocapp": "node src/shocappExtractor.js",
+    "bot": "node src/telegramBot.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cheerio": "^1.2.0",
+    "dotenv": "^17.3.1",
+    "jszip": "^3.10.1",
+    "nodemailer": "^8.0.2",
+    "xlsx": "^0.18.5"
+  },
+  "optionalDependencies": {
+    "playwright": "^1.58.2"
+  }
+}

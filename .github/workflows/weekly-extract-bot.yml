@@ -1,0 +1,86 @@
+name: Weekly SHOCAPP Extraction + Bot (6h)
+
+on:
+  workflow_dispatch: # Allow manual trigger from GitHub UI / phone
+
+jobs:
+  extract-and-bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360  # 6 hours max
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+        timeout-minutes: 5
+        continue-on-error: false
+        env:
+          npm_config_fetch_retry_mintimeout: 20000
+          npm_config_fetch_retry_maxtimeout: 120000
+          npm_config_fetch_retries: 5
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium --with-deps
+
+      - name: Run SHOCAPP extraction (generate files only)
+        env:
+          GELATERIA_USER: ${{ secrets.GELATERIA_USER }}
+          GELATERIA_PASS: ${{ secrets.GELATERIA_PASS }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: '104393673'
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
+          EMAIL_TO: 'miladreihanpour@gmail.com,saeedgar@yahoo.com'
+          AUTO_SEND_TELEGRAM: 'false'
+          AUTO_SEND_EMAIL: 'false'
+        run: node src/shocappExtractor.js
+
+      - name: Upload XLSX/ZIP artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: shocapp-bot-data-${{ github.run_number }}
+          path: output/shocapp_*
+          retention-days: 90
+
+      - name: Commit updated output to repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A output/
+          git add -f output/shocapp_*.xlsx output/shocapp_*.zip
+          git diff --staged --quiet && echo 'No changes to commit' || (git commit -m "Weekly SHOCAPP data $(date -u +%Y-%m-%d)" && git push)
+
+      - name: Start Telegram bot (keeps alive for up to 6 hours)
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: '104393673'
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
+        run: |
+          # Notify that bot is now live
+          node -e "
+            const https = require('https');
+            const body = JSON.stringify({
+              chat_id: '104393673',
+              text: '🤖 Bot attivo per 6 ore. Usa /start per richiedere i file.'
+            });
+            const req = https.request({
+              method: 'POST',
+              hostname: 'api.telegram.org',
+              path: '/bot' + process.env.TELEGRAM_BOT_TOKEN + '/sendMessage',
+              headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+            });
+            req.write(body);
+            req.end();
+          "
+          # Run the bot for up to 6 hours (21600 seconds)
+          timeout 21600 node src/telegramBot.js || true
