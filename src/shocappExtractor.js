@@ -397,7 +397,13 @@ function fillExcelTemplate(daOrdinareRows) {
   XLSX.writeFile(wb, outPath);
   log.info('Excel template filled from %s (%s): %d items with qty > 0 -> %s', templatePath, firstSheet, filled, outPath);
 
-  return ws;
+  return {
+    sheet: ws,
+    data,
+    columnPairs,
+    sheetName: firstSheet,
+    templatePath,
+  };
 }
 
 /**
@@ -432,12 +438,52 @@ function exportCleanXlsx(filledTemplateSheet, presetRows, daOrdinareHeaders, daO
   log.info('Clean xlsx: %d sheets -> %s', wb.SheetNames.length, outPath);
 }
 
-async function exportOrderPdf(daOrdinareRows) {
+function normalizeFlavorName(value) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/['’`]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
+}
+
+function computeTotalOrderExcludingMascarpone(daOrdinareRows) {
+  return daOrdinareRows.reduce((sum, row) => {
+    const gusto = normalizeFlavorName(row?.[0]);
+    const qty = parseInt(row?.[2], 10) || 0;
+    if (gusto === 'CREMA MASCARPONE') {
+      return sum;
+    }
+    return sum + Math.max(0, qty);
+  }, 0);
+}
+
+function buildTemplateOrderRows(templateData, columnPairs) {
+  const rows = [];
+  for (let r = 1; r < templateData.length; r++) {
+    const resultRow = [];
+    let hasFlavor = false;
+
+    for (const pair of columnPairs) {
+      const flavor = String(templateData[r]?.[pair.flavorCol] ?? '').trim();
+      const qty = parseInt(templateData[r]?.[pair.ordineCol], 10) || 0;
+      if (flavor) hasFlavor = true;
+      resultRow.push({ flavor, qty: qty > 0 ? qty : '' });
+    }
+
+    if (hasFlavor) {
+      rows.push(resultRow);
+    }
+  }
+  return rows;
+}
+
+async function exportOrderPdf(templateInfo, daOrdinareRows) {
   const outPath = 'output/shocapp_da_ordinare.pdf';
-  const orderRows = daOrdinareRows
-    .map(([gusto, , qty]) => [String(gusto ?? ''), parseInt(qty, 10) || 0])
-    .filter(([, qty]) => qty > 0)
-    .sort((a, b) => b[1] - a[1]);
+  const { data: templateData, columnPairs } = templateInfo;
+  const tableRows = buildTemplateOrderRows(templateData, columnPairs);
+  const totalVaschette = computeTotalOrderExcludingMascarpone(daOrdinareRows);
 
   await fs.promises.mkdir(path.dirname(outPath), { recursive: true });
 
@@ -468,43 +514,75 @@ async function exportOrderPdf(daOrdinareRows) {
       align: 'left',
     });
 
-    const startY = top + 20;
+    doc.font('Helvetica').fontSize(10).text(
+      `Totale vaschette (esclusa CREMA MASCARPONE): ${totalVaschette}`,
+      left,
+      top + 15,
+      { width: tableWidth, align: 'left' },
+    );
+
+    const startY = top + 32;
     const headerRows = 1;
-    const totalRows = Math.max(1, orderRows.length) + headerRows;
+    const totalRows = Math.max(1, tableRows.length) + headerRows;
     const availableHeight = Math.max(40, bottom - startY - 4);
     const rowHeight = availableHeight / totalRows;
-    const fontSize = Math.max(5, Math.min(11, rowHeight * 0.52));
+    const fontSize = Math.max(4.5, Math.min(9, rowHeight * 0.55));
 
-    const qtyColWidth = 90;
-    const gustoColWidth = tableWidth - qtyColWidth;
-    const xGusto = left;
-    const xQty = left + gustoColWidth;
+    const groupCount = columnPairs.length;
+    const groupWidth = tableWidth / groupCount;
+    const flavorRatio = 0.78;
+    const flavorColWidth = groupWidth * flavorRatio;
+    const qtyColWidth = groupWidth - flavorColWidth;
+
+    const headerLabels = columnPairs.map((pair, idx) => {
+      const raw = String(templateData[0]?.[pair.flavorCol] ?? '').trim();
+      return raw || `Gruppo ${idx + 1}`;
+    });
 
     let y = startY;
     doc.font('Helvetica-Bold').fontSize(fontSize);
-    doc.text('Gusto', xGusto + 4, y + 2, { width: gustoColWidth - 8, align: 'left' });
-    doc.text('Ordine', xQty + 4, y + 2, { width: qtyColWidth - 8, align: 'right' });
+    for (let i = 0; i < groupCount; i++) {
+      const groupLeft = left + i * groupWidth;
+      const xFlavor = groupLeft;
+      const xQty = groupLeft + flavorColWidth;
+      doc.text(headerLabels[i], xFlavor + 2, y + 2, { width: flavorColWidth - 4, align: 'left', ellipsis: true });
+      doc.text('Ord', xQty + 2, y + 2, { width: qtyColWidth - 4, align: 'right' });
+    }
 
     doc.moveTo(left, y).lineTo(right, y).stroke();
     y += rowHeight;
     doc.moveTo(left, y).lineTo(right, y).stroke();
 
     doc.font('Helvetica').fontSize(fontSize);
-    if (orderRows.length === 0) {
-      doc.text('Nessun ordine (> 0) da mostrare.', xGusto + 4, y + 2, { width: tableWidth - 8, align: 'left' });
+    if (tableRows.length === 0) {
+      doc.text('Nessun ordine (> 0) da mostrare.', left + 4, y + 2, { width: tableWidth - 8, align: 'left' });
       y += rowHeight;
       doc.moveTo(left, y).lineTo(right, y).stroke();
     } else {
-      for (const [gusto, qty] of orderRows) {
+      for (const row of tableRows) {
         const rowTextY = y + 2;
-        doc.text(gusto, xGusto + 4, rowTextY, { width: gustoColWidth - 8, align: 'left', ellipsis: true });
-        doc.text(String(qty), xQty + 4, rowTextY, { width: qtyColWidth - 8, align: 'right' });
+        for (let i = 0; i < groupCount; i++) {
+          const groupLeft = left + i * groupWidth;
+          const xFlavor = groupLeft;
+          const xQty = groupLeft + flavorColWidth;
+          const flavor = row[i]?.flavor ?? '';
+          const qty = row[i]?.qty ?? '';
+          doc.text(flavor, xFlavor + 2, rowTextY, { width: flavorColWidth - 4, align: 'left', ellipsis: true });
+          doc.text(String(qty), xQty + 2, rowTextY, { width: qtyColWidth - 4, align: 'right' });
+        }
         y += rowHeight;
         doc.moveTo(left, y).lineTo(right, y).stroke();
       }
     }
 
-    doc.moveTo(xQty, startY).lineTo(xQty, y).stroke();
+    for (let i = 0; i < groupCount; i++) {
+      const groupLeft = left + i * groupWidth;
+      const xQty = groupLeft + flavorColWidth;
+      if (i > 0) {
+        doc.moveTo(groupLeft, startY).lineTo(groupLeft, y).stroke();
+      }
+      doc.moveTo(xQty, startY).lineTo(xQty, y).stroke();
+    }
     doc.rect(left, startY, tableWidth, y - startY).stroke();
 
     doc.end();
@@ -665,6 +743,9 @@ async function sendEmail() {
   const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: { user, pass },
+    tls: {
+      rejectUnauthorized: process.env.EMAIL_TLS_REJECT_UNAUTHORIZED === 'true',
+    },
   });
 
   await transporter.sendMail({
@@ -784,13 +865,13 @@ export async function extractShocapp() {
       daOrdinareRows.length, daOrdPath, daOrdPath, daOrdPath);
 
     // -- Fill Excel template ------------------------------------------------
-    const filledSheet = fillExcelTemplate(daOrdinareRows);
+    const templateInfo = fillExcelTemplate(daOrdinareRows);
 
     // -- Export order-only PDF ----------------------------------------------
-    const orderPdfPath = await exportOrderPdf(daOrdinareRows);
+    const orderPdfPath = await exportOrderPdf(templateInfo, daOrdinareRows);
 
     // -- Clean multi-sheet xlsx ---------------------------------------------
-    exportCleanXlsx(filledSheet, presetRows, daOrdinareHeaders, daOrdinareRows);
+    exportCleanXlsx(templateInfo.sheet, presetRows, daOrdinareHeaders, daOrdinareRows);
 
     // -- Bundle all formats into a ZIP and keep final output xlsx-only ------
     const temporaryFiles = [

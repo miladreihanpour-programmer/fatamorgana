@@ -220,6 +220,9 @@ function createMailer() {
   return nodemailer.createTransport({
     service: 'gmail',
     auth: { user, pass },
+    tls: {
+      rejectUnauthorized: process.env.EMAIL_TLS_REJECT_UNAUTHORIZED === 'true',
+    },
   });
 }
 

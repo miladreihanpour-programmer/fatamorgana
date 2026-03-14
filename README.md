@@ -59,7 +59,7 @@ All output is saved in the `output/` folder:
 | `shocapp_mantenimento_tutto.xlsx` | Current stock (Mantenimento) |
 | `shocapp_esaurito_7giorni.xlsx` | Last 7 days sold out (Esaurito) |
 | `shocapp_da_ordinare.xlsx` | Calculated reorder quantities |
-| `shocapp_da_ordinare.pdf` | Order-only PDF (single-page, narrow margins) |
+| `shocapp_da_ordinare.pdf` | Order PDF from filled template layout (single-page, narrow margins) + total vaschette excluding Crema Mascarpone |
 | `shocapp_template_filled.xlsx` | Inventory template with order quantities filled in |
 | `shocapp_report.xlsx` | Multi-sheet report (Inventario, Mantenimento, Esaurito, Da Ordinare) |
 | `shocapp_all_formats.zip` | ZIP bundle containing XLSX, CSV, and JSON versions |
@@ -147,6 +147,7 @@ Input format examples:
 | `EMAIL_USER` | Sender Gmail address |
 | `EMAIL_PASS` | Gmail app password |
 | `EMAIL_TO` | Comma-separated recipient emails |
+| `EMAIL_TLS_REJECT_UNAUTHORIZED` | Optional TLS strict check (`false` default, set `true` to enforce full cert validation) |
 
 ## Security
 
