@@ -19,6 +19,7 @@ import 'dotenv/config';
 import { chromium } from 'playwright';
 import * as cheerio from 'cheerio';
 import XLSX from 'xlsx';
+import PDFDocument from 'pdfkit';
 import fs from 'fs';
 import path from 'path';
 import https from 'https';
@@ -431,6 +432,88 @@ function exportCleanXlsx(filledTemplateSheet, presetRows, daOrdinareHeaders, daO
   log.info('Clean xlsx: %d sheets -> %s', wb.SheetNames.length, outPath);
 }
 
+async function exportOrderPdf(daOrdinareRows) {
+  const outPath = 'output/shocapp_da_ordinare.pdf';
+  const orderRows = daOrdinareRows
+    .map(([gusto, , qty]) => [String(gusto ?? ''), parseInt(qty, 10) || 0])
+    .filter(([, qty]) => qty > 0)
+    .sort((a, b) => b[1] - a[1]);
+
+  await fs.promises.mkdir(path.dirname(outPath), { recursive: true });
+
+  await new Promise((resolve, reject) => {
+    const doc = new PDFDocument({
+      size: 'A4',
+      layout: 'landscape',
+      margins: { top: 16, bottom: 16, left: 16, right: 16 },
+    });
+
+    const stream = fs.createWriteStream(outPath);
+    stream.on('finish', resolve);
+    stream.on('error', reject);
+    doc.on('error', reject);
+    doc.pipe(stream);
+
+    const pageWidth = doc.page.width;
+    const pageHeight = doc.page.height;
+    const left = doc.page.margins.left;
+    const right = pageWidth - doc.page.margins.right;
+    const top = doc.page.margins.top;
+    const bottom = pageHeight - doc.page.margins.bottom;
+    const tableWidth = right - left;
+
+    const title = `Ordini (${new Date().toLocaleDateString('it-IT')})`;
+    doc.font('Helvetica-Bold').fontSize(14).text(title, left, top, {
+      width: tableWidth,
+      align: 'left',
+    });
+
+    const startY = top + 20;
+    const headerRows = 1;
+    const totalRows = Math.max(1, orderRows.length) + headerRows;
+    const availableHeight = Math.max(40, bottom - startY - 4);
+    const rowHeight = availableHeight / totalRows;
+    const fontSize = Math.max(5, Math.min(11, rowHeight * 0.52));
+
+    const qtyColWidth = 90;
+    const gustoColWidth = tableWidth - qtyColWidth;
+    const xGusto = left;
+    const xQty = left + gustoColWidth;
+
+    let y = startY;
+    doc.font('Helvetica-Bold').fontSize(fontSize);
+    doc.text('Gusto', xGusto + 4, y + 2, { width: gustoColWidth - 8, align: 'left' });
+    doc.text('Ordine', xQty + 4, y + 2, { width: qtyColWidth - 8, align: 'right' });
+
+    doc.moveTo(left, y).lineTo(right, y).stroke();
+    y += rowHeight;
+    doc.moveTo(left, y).lineTo(right, y).stroke();
+
+    doc.font('Helvetica').fontSize(fontSize);
+    if (orderRows.length === 0) {
+      doc.text('Nessun ordine (> 0) da mostrare.', xGusto + 4, y + 2, { width: tableWidth - 8, align: 'left' });
+      y += rowHeight;
+      doc.moveTo(left, y).lineTo(right, y).stroke();
+    } else {
+      for (const [gusto, qty] of orderRows) {
+        const rowTextY = y + 2;
+        doc.text(gusto, xGusto + 4, rowTextY, { width: gustoColWidth - 8, align: 'left', ellipsis: true });
+        doc.text(String(qty), xQty + 4, rowTextY, { width: qtyColWidth - 8, align: 'right' });
+        y += rowHeight;
+        doc.moveTo(left, y).lineTo(right, y).stroke();
+      }
+    }
+
+    doc.moveTo(xQty, startY).lineTo(xQty, y).stroke();
+    doc.rect(left, startY, tableWidth, y - startY).stroke();
+
+    doc.end();
+  });
+
+  log.info('Order PDF generated (single page): %s', outPath);
+  return outPath;
+}
+
 async function createAllFormatsZip(filePaths) {
   const zip = new JSZip();
 
@@ -703,6 +786,9 @@ export async function extractShocapp() {
     // -- Fill Excel template ------------------------------------------------
     const filledSheet = fillExcelTemplate(daOrdinareRows);
 
+    // -- Export order-only PDF ----------------------------------------------
+    const orderPdfPath = await exportOrderPdf(daOrdinareRows);
+
     // -- Clean multi-sheet xlsx ---------------------------------------------
     exportCleanXlsx(filledSheet, presetRows, daOrdinareHeaders, daOrdinareRows);
 
@@ -720,6 +806,7 @@ export async function extractShocapp() {
       'output/shocapp_mantenimento_tutto.xlsx',
       'output/shocapp_esaurito_7giorni.xlsx',
       'output/shocapp_da_ordinare.xlsx',
+      orderPdfPath,
       'output/shocapp_template_filled.xlsx',
       'output/shocapp_report.xlsx',
     ];

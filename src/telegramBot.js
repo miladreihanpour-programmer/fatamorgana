@@ -27,6 +27,7 @@ const ALLOWED_CHAT_IDS = (process.env.TELEGRAM_CHAT_ID || '')
 const FILES = [
   { id: 'report', label: 'Report Completo', file: 'output/shocapp_report.xlsx' },
   { id: 'ordini', label: 'Ordini Settimanali', file: 'output/shocapp_template_filled.xlsx' },
+  { id: 'ordini_pdf', label: 'Ordini (PDF)', file: 'output/shocapp_da_ordinare.pdf' },
   { id: 'mantenimento', label: 'Mantenimento', file: 'output/shocapp_mantenimento_tutto.xlsx' },
   { id: 'esaurito', label: 'Esaurito', file: 'output/shocapp_esaurito_7giorni.xlsx' },
   { id: 'da_ordinare', label: 'Da Ordinare', file: 'output/shocapp_da_ordinare.xlsx' },

@@ -59,6 +59,7 @@ All output is saved in the `output/` folder:
 | `shocapp_mantenimento_tutto.xlsx` | Current stock (Mantenimento) |
 | `shocapp_esaurito_7giorni.xlsx` | Last 7 days sold out (Esaurito) |
 | `shocapp_da_ordinare.xlsx` | Calculated reorder quantities |
+| `shocapp_da_ordinare.pdf` | Order-only PDF (single-page, narrow margins) |
 | `shocapp_template_filled.xlsx` | Inventory template with order quantities filled in |
 | `shocapp_report.xlsx` | Multi-sheet report (Inventario, Mantenimento, Esaurito, Da Ordinare) |
 | `shocapp_all_formats.zip` | ZIP bundle containing XLSX, CSV, and JSON versions |
@@ -122,6 +123,13 @@ Available bot actions:
 - `👤 Invia a Telegram ID`
 - `🧹 Pulisci selezione`
 - `🛑 Ferma Bot`
+
+Available files in bot selection include:
+- report Excel
+- weekly orders Excel (filled template)
+- order-only PDF (`shocapp_da_ordinare.pdf`)
+- mantenimento/esaurito/da-ordinare Excel files
+- ZIP complete bundle
 
 Input format examples:
 - Email: `a@example.com, b@example.com`
