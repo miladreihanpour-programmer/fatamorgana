@@ -714,7 +714,7 @@ function shouldAutoSend(envName) {
  */
 async function sendEmail() {
   const user = process.env.EMAIL_USER;
-  const pass = process.env.EMAIL_PASS;
+  const pass = (process.env.EMAIL_PASS || '').replace(/\s+/g, '');
   const recipients = (process.env.EMAIL_TO || '').split(',').map(e => e.trim()).filter(Boolean);
 
   if (!user || !pass) {
@@ -743,7 +743,9 @@ async function sendEmail() {
   const dateStr = now.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
   const transporter = nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false,
     auth: { user, pass },
     tls: {
       rejectUnauthorized: process.env.EMAIL_TLS_REJECT_UNAUTHORIZED === 'true',

@@ -211,14 +211,16 @@ async function editMenu(chatId, messageId) {
 
 function createMailer() {
   const user = process.env.EMAIL_USER;
-  const pass = process.env.EMAIL_PASS;
+  const pass = (process.env.EMAIL_PASS || '').replace(/\s+/g, '');
 
   if (!user || !pass) {
     return null;
   }
 
   return nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false,
     auth: { user, pass },
     tls: {
       rejectUnauthorized: process.env.EMAIL_TLS_REJECT_UNAUTHORIZED === 'true',
