@@ -389,6 +389,8 @@ function fillExcelTemplate(daOrdinareRows) {
       const qty = qtyMap.get(dataName) ?? 0;
       const cellRef = XLSX.utils.encode_cell({ r: r, c: pair.ordineCol });
       ws[cellRef] = { t: 'n', v: qty };
+      if (!data[r]) data[r] = [];
+      data[r][pair.ordineCol] = qty;
       if (qty > 0) filled++;
     }
   }
@@ -515,7 +517,7 @@ async function exportOrderPdf(templateInfo, daOrdinareRows) {
     });
 
     doc.font('Helvetica').fontSize(10).text(
-      `Totale vaschette (esclusa CREMA MASCARPONE): ${totalVaschette}`,
+      `Totale vaschette: ${totalVaschette}`,
       left,
       top + 15,
       { width: tableWidth, align: 'left' },
