@@ -96,7 +96,7 @@ Required GitHub secrets:
 
 ## Telegram Notifications
 
-After each run, the two Excel files (`shocapp_template_filled.xlsx` and `shocapp_report.xlsx`) are automatically sent to a Telegram chat via the **fatamilad_bot**.
+After each run, the two Excel files (`shocapp_template_filled.xlsx` and `shocapp_report.xlsx`) are automatically sent to a Telegram chat via the **croceviabot**.
 
 To set up:
 1. Get the bot token from [@BotFather](https://t.me/BotFather)
@@ -205,7 +205,17 @@ gpush
 gpull
 ```
 
-### Run GitHub Actions workflow from terminal
+### Run workflow locally from terminal
+
+```powershell
+run .github\workflows\weekly-extract.yml
+run .github\workflows\weekly-extract-bot.yml
+```
+
+This runs the local equivalent of those workflow files in your terminal.
+For the bot workflow, your Telegram chat should receive a startup message. You can also open the bot and send `/start` manually.
+
+### Trigger GitHub Actions workflow on GitHub from terminal
 
 ```powershell
 gh workflow run weekly-extract-bot.yml -R miladreihanpour-programmer/fatamorgana

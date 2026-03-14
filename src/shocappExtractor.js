@@ -260,10 +260,28 @@ function resolveDataFlavorName(templateName, qtyMap) {
   if (!templateName) return null;
 
   const clean = String(templateName).trim();
+  const normalize = (value) => String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/['’`]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
+  const cleanNorm = normalize(clean);
+
+  const qtyNormalized = new Map();
+  for (const key of qtyMap.keys()) {
+    qtyNormalized.set(normalize(key), key);
+  }
 
   // 1) Strict exact match first (safest)
   if (qtyMap.has(clean)) {
     return clean;
+  }
+
+  // 1b) Normalized exact match fallback
+  if (qtyNormalized.has(cleanNorm)) {
+    return qtyNormalized.get(cleanNorm);
   }
 
   // 2) Fallback alias map only when unambiguous
@@ -274,15 +292,74 @@ function resolveDataFlavorName(templateName, qtyMap) {
     return null;
   }
 
+  if (qtyMap.has(mapped)) {
+    return mapped;
+  }
+
+  const mappedNorm = normalize(mapped);
+  if (qtyNormalized.has(mappedNorm)) {
+    return qtyNormalized.get(mappedNorm);
+  }
+
   return mapped;
+}
+
+function pickTemplateFilePath() {
+  const candidates = [
+    'gelato_flavors_ONLY_ORDINE.xlsx',
+    'gelato_flavors.xlsx',
+    'Flavor_Inventory_Template.xlsx',
+  ];
+
+  for (const file of candidates) {
+    if (fs.existsSync(file)) return file;
+  }
+
+  throw new Error('No supported template file found. Expected one of: ' + candidates.join(', '));
+}
+
+function detectFlavorOrderColumns(headerRow) {
+  const normalize = (value) => String(value ?? '').trim().toUpperCase();
+  const metricHeaders = new Set(['ESAURITO', 'MANTENIMENTO', 'ORDINE']);
+
+  const categoryStarts = [];
+  for (let c = 0; c < headerRow.length; c++) {
+    const h = normalize(headerRow[c]);
+    if (!h) continue;
+    if (!metricHeaders.has(h)) {
+      categoryStarts.push(c);
+    }
+  }
+
+  const pairs = [];
+  for (let i = 0; i < categoryStarts.length; i++) {
+    const flavorCol = categoryStarts[i];
+    const nextStart = i + 1 < categoryStarts.length ? categoryStarts[i + 1] : headerRow.length;
+
+    let ordineCol = null;
+    for (let c = flavorCol + 1; c < nextStart; c++) {
+      if (normalize(headerRow[c]) === 'ORDINE') {
+        ordineCol = c;
+        break;
+      }
+    }
+
+    if (ordineCol !== null) {
+      pairs.push({ flavorCol, ordineCol });
+    }
+  }
+
+  return pairs;
 }
 
 /**
  * Read the Excel template, fill in Qty columns from Da Ordinare data, save.
  */
 function fillExcelTemplate(daOrdinareRows) {
-  const wb = XLSX.readFile('Flavor_Inventory_Template.xlsx');
-  const ws = wb.Sheets['Sheet1'];
+  const templatePath = pickTemplateFilePath();
+  const wb = XLSX.readFile(templatePath);
+  const firstSheet = wb.SheetNames[0];
+  const ws = wb.Sheets[firstSheet];
   const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
 
   // Build gusto -> order qty map from daOrdinareRows [gusto, stato, qty]
@@ -291,22 +368,25 @@ function fillExcelTemplate(daOrdinareRows) {
     qtyMap.set(row[0], parseInt(row[2], 10) || 0);
   }
 
-  // Flavor columns at 0,2,4,6 — Qty columns at 1,3,5,7
-  const flavorCols = [0, 2, 4, 6];
-  const qtyCols    = [1, 3, 5, 7];
+  const headerRow = data[0] ?? [];
+  const columnPairs = detectFlavorOrderColumns(headerRow);
+
+  if (columnPairs.length === 0) {
+    throw new Error(`Template format not supported in ${templatePath}: could not detect flavor/ORDINE columns`);
+  }
+
   let filled = 0;
 
   for (let r = 1; r < data.length; r++) {
-    for (let f = 0; f < flavorCols.length; f++) {
-      const templateName = data[r]?.[flavorCols[f]];
+    for (const pair of columnPairs) {
+      const templateName = data[r]?.[pair.flavorCol];
       if (!templateName) continue;
 
       const dataName = resolveDataFlavorName(templateName, qtyMap);
       if (!dataName) continue;
 
       const qty = qtyMap.get(dataName) ?? 0;
-      // Write qty to the adjacent column
-      const cellRef = XLSX.utils.encode_cell({ r: r, c: qtyCols[f] });
+      const cellRef = XLSX.utils.encode_cell({ r: r, c: pair.ordineCol });
       ws[cellRef] = { t: 'n', v: qty };
       if (qty > 0) filled++;
     }
@@ -314,7 +394,7 @@ function fillExcelTemplate(daOrdinareRows) {
 
   const outPath = 'output/shocapp_template_filled.xlsx';
   XLSX.writeFile(wb, outPath);
-  log.info('Excel template filled: %d items with qty > 0 -> %s', filled, outPath);
+  log.info('Excel template filled from %s (%s): %d items with qty > 0 -> %s', templatePath, firstSheet, filled, outPath);
 
   return ws;
 }

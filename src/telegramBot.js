@@ -1,5 +1,5 @@
 /**
- * telegramBot.js - Interactive Telegram bot for @fatamilad_bot
+ * telegramBot.js - Interactive Telegram bot for @croceviabot
  *
  * Sends a menu of buttons on /start. Users can select which files they want,
  * then send the current selection to the current chat, to another Telegram ID,
@@ -442,5 +442,5 @@ async function poll() {
   poll();
 }
 
-log.info('Starting @fatamilad_bot... Press Ctrl+C to stop.');
+log.info('Starting @croceviabot... Press Ctrl+C to stop.');
 poll();
