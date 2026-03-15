@@ -20,6 +20,8 @@ import { chromium } from 'playwright';
 import * as cheerio from 'cheerio';
 import XLSX from 'xlsx';
 import PDFDocument from 'pdfkit';
+import { PDFDocument as PdfLibDocument, StandardFonts, rgb } from 'pdf-lib';
+import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import fs from 'fs';
 import path from 'path';
 import https from 'https';
@@ -482,6 +484,138 @@ function buildTemplateOrderRows(templateData, columnPairs) {
 }
 
 async function exportOrderPdf(templateInfo, daOrdinareRows) {
+  const templatePdfPath = 'TEMPLATE PDF.pdf';
+  if (fs.existsSync(templatePdfPath)) {
+    const outPathFromTemplate = await exportOrderPdfFromPdfTemplate(templateInfo, daOrdinareRows, templatePdfPath);
+    if (outPathFromTemplate) {
+      return outPathFromTemplate;
+    }
+  }
+
+  return exportOrderPdfFallback(templateInfo, daOrdinareRows);
+}
+
+async function exportOrderPdfFromPdfTemplate(templateInfo, daOrdinareRows, templatePdfPath) {
+  const outPath = 'output/shocapp_da_ordinare.pdf';
+  const { data: templateData, columnPairs } = templateInfo;
+  const tableRows = buildTemplateOrderRows(templateData, columnPairs);
+  const totalVaschette = computeTotalOrderExcludingMascarpone(daOrdinareRows);
+
+  const entries = [];
+  for (const row of tableRows) {
+    for (const item of row) {
+      const qty = parseInt(item.qty, 10) || 0;
+      if (qty > 0 && item.flavor) {
+        entries.push({ flavor: String(item.flavor).trim(), qty });
+      }
+    }
+  }
+
+  await fs.promises.mkdir(path.dirname(outPath), { recursive: true });
+
+  try {
+    const templateBytes = await fs.promises.readFile(templatePdfPath);
+    const templateData = new Uint8Array(templateBytes);
+    const pdfDoc = await PdfLibDocument.load(templateData);
+    const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+    const loadingTask = getDocument({ data: templateData });
+    const parsedPdf = await loadingTask.promise;
+    const parsedPage = await parsedPdf.getPage(1);
+    const textContent = await parsedPage.getTextContent();
+
+    const normalize = normalizeFlavorName;
+    const textItems = textContent.items
+      .filter((it) => it && typeof it.str === 'string')
+      .map((it) => {
+        const str = it.str.trim();
+        return {
+          str,
+          norm: normalize(str),
+          x: it.transform[4],
+          y: it.transform[5],
+          width: it.width || 0,
+          height: Math.abs(it.height || it.transform[0] || 10),
+        };
+      })
+      .filter((it) => it.str.length > 0);
+
+    const ordineHeaders = textItems
+      .filter((it) => it.norm === 'ORDINE' || it.norm === 'ORD')
+      .map((it) => ({
+        xCenter: it.x + (it.width / 2),
+      }));
+
+    const totalLabel = textItems.find((it) => it.norm.startsWith('TOTAL'));
+    const usedIndexes = new Set();
+
+    const page = pdfDoc.getPages()[0];
+    const qtyFontSize = 10;
+
+    for (const entry of entries) {
+      const targetNorm = normalize(entry.flavor);
+      const candidates = [];
+      for (let i = 0; i < textItems.length; i++) {
+        if (usedIndexes.has(i)) continue;
+        if (textItems[i].norm === targetNorm) {
+          candidates.push({ idx: i, item: textItems[i] });
+        }
+      }
+      if (candidates.length === 0) continue;
+
+      const selected = candidates[0];
+      usedIndexes.add(selected.idx);
+
+      const flavorItem = selected.item;
+      let ordineCenterX = flavorItem.x + flavorItem.width + 36;
+      if (ordineHeaders.length > 0) {
+        ordineCenterX = ordineHeaders.reduce((best, current) => {
+          const bestDiff = Math.abs(best - (flavorItem.x + flavorItem.width));
+          const currentDiff = Math.abs(current.xCenter - (flavorItem.x + flavorItem.width));
+          return currentDiff < bestDiff ? current.xCenter : best;
+        }, ordineHeaders[0].xCenter);
+      }
+
+      const qtyText = String(entry.qty);
+      const textWidth = helveticaBold.widthOfTextAtSize(qtyText, qtyFontSize);
+      const drawX = ordineCenterX - (textWidth / 2);
+      const drawY = flavorItem.y - (qtyFontSize * 0.15);
+
+      page.drawText(qtyText, {
+        x: drawX,
+        y: drawY,
+        size: qtyFontSize,
+        font: helveticaBold,
+        color: rgb(0.08, 0.08, 0.08),
+      });
+    }
+
+    if (totalLabel) {
+      const totalText = String(totalVaschette);
+      const totalFontSize = 11;
+      const drawX = totalLabel.x + totalLabel.width + 10;
+      const drawY = totalLabel.y - (totalFontSize * 0.15);
+      page.drawText(totalText, {
+        x: drawX,
+        y: drawY,
+        size: totalFontSize,
+        font: helveticaBold,
+        color: rgb(0.05, 0.05, 0.05),
+      });
+    }
+
+    const outBytes = await pdfDoc.save();
+    await fs.promises.writeFile(outPath, outBytes);
+    log.info('Order PDF generated from template: %s', outPath);
+    return outPath;
+  } catch (error) {
+    log.warn('Template PDF fill failed (%s). Falling back to generated table PDF.', error.message);
+    return null;
+  }
+}
+
+async function exportOrderPdfFallback(templateInfo, daOrdinareRows) {
   const outPath = 'output/shocapp_da_ordinare.pdf';
   const { data: templateData, columnPairs } = templateInfo;
   const tableRows = buildTemplateOrderRows(templateData, columnPairs);
@@ -616,7 +750,7 @@ async function exportOrderPdf(templateInfo, daOrdinareRows) {
     doc.end();
   });
 
-  log.info('Order PDF generated (single page): %s', outPath);
+  log.info('Order PDF generated (fallback table mode): %s', outPath);
   return outPath;
 }
 
