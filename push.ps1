@@ -1,7 +1,7 @@
 Set-Location $PSScriptRoot
 $GitHubUser = "miladreihanpour-programmer"
 $RepoName = if ($args.Count -gt 0 -and $args[0]) { $args[0] } else { "fatamorgana" }
-$BranchName = (git branch --show-current)
+$BranchName = (git.exe branch --show-current)
 if (-not $BranchName) { $BranchName = "main" }
 
 $SshKeyPath = if ($env:SSH_KEY_PATH) { $env:SSH_KEY_PATH } else { "C:/Users/$env:USERNAME/.ssh/id_ed25519_milad" }
@@ -9,20 +9,20 @@ $env:GIT_SSH_COMMAND = "ssh -i `"$SshKeyPath`" -o IdentitiesOnly=yes -o StrictHo
 
 $RemoteUrl = "git@github.com:$GitHubUser/$RepoName.git"
 
-git remote get-url origin *> $null
+git.exe remote get-url origin *> $null
 if ($LASTEXITCODE -eq 0) {
-	git remote set-url origin $RemoteUrl
+	git.exe remote set-url origin $RemoteUrl
 } else {
-	git remote add origin $RemoteUrl
+	git.exe remote add origin $RemoteUrl
 }
 
-git add -A
+git.exe add -A
 
-git diff --cached --quiet
+git.exe diff --cached --quiet
 if ($LASTEXITCODE -ne 0) {
-	git commit -m "Update $(Get-Date -Format yyyy-MM-dd)"
+	git.exe commit -m "Update $(Get-Date -Format yyyy-MM-dd)"
 } else {
 	Write-Host "No staged changes to commit."
 }
 
-git push -u origin $BranchName
+git.exe push -u origin $BranchName
