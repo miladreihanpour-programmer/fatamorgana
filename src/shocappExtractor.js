@@ -18,6 +18,8 @@
 import 'dotenv/config';
 import { chromium } from 'playwright';
 import * as cheerio from 'cheerio';
+import { promisify } from 'util';
+import { execFile } from 'child_process';
 import XLSX from 'xlsx';
 import PDFDocument from 'pdfkit';
 import { PDFDocument as PdfLibDocument, StandardFonts, rgb } from 'pdf-lib';
@@ -31,6 +33,7 @@ import { exportJSON, exportCSV, exportXLSX } from './exportData.js';
 import { createLogger } from './logger.js';
 
 const log = createLogger('shocapp');
+const execFileAsync = promisify(execFile);
 
 const LOGIN_URL =
   'https://www.gelateriafatamorgana.com/fata/tracking-manager/html/login.php';
@@ -64,15 +67,17 @@ async function fetchShocappTable(bPage, preset, pageNum = 1) {
   return bPage.evaluate(({ p, pg, u }) => {
     const now = new Date();
     const pad = (n) => String(n).padStart(2, '0');
-    const dateStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    const formatDate = (value) => `${value.getFullYear()}-${pad(value.getMonth()+1)}-${pad(value.getDate())} ${pad(value.getHours())}:${pad(value.getMinutes())}`;
+    const date1 = p.dateFrom ? formatDate(new Date(p.dateFrom)) : formatDate(now);
+    const date2 = p.dateTo ? formatDate(new Date(p.dateTo)) : formatDate(now);
 
     const params = new URLSearchParams({
       l: '1', sel_frigo: '', page_param: 'shocapp',
       h_causale: '', h_negozi: '',
-      Selperiodo: '1', SelData: p.selData, SelStatus: p.selStatus,
-      SelTabella: '1', SelFamiglia: '', cercaStringa: '', q: '',
+      Selperiodo: p.selPeriodo || '1', SelData: p.selData, SelStatus: p.selStatus,
+      SelTabella: p.selTabella || '1', SelFamiglia: '', cercaStringa: '', q: '',
       searchrow: '', searchcol: '', datatable1_length: '100',
-      date1: dateStr, date2: dateStr,
+      date1, date2,
       shop: '', sStatus: p.selStatus, sCausale: '',
       m: '100', p: String(pg), o_by: '', o_mode: 'asc',
       lng: '1', lid: '31', usr: u,
@@ -146,6 +151,118 @@ async function fetchAllPages(bPage, preset) {
   }
 
   return allRows;
+}
+
+function sumByGusto(rows) {
+  const map = new Map();
+  for (const r of rows) {
+    const gusto = r[1];
+    const n = parseInt(r[4], 10) || 0;
+    map.set(gusto, (map.get(gusto) || 0) + n);
+  }
+  return map;
+}
+
+function getHistoricalWeekRange(weeksAgo, now = new Date()) {
+  const base = new Date(now);
+  base.setHours(0, 0, 0, 0);
+  const day = base.getDay();
+  const daysSinceMonday = (day + 6) % 7;
+  const monday = new Date(base);
+  monday.setDate(base.getDate() - daysSinceMonday - (weeksAgo * 7));
+  monday.setHours(0, 0, 0, 0);
+
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  sunday.setHours(23, 59, 59, 999);
+
+  return { start: monday, end: sunday };
+}
+
+async function fetchWeeklySalesHistory(bPage, weeks = 8) {
+  const history = [];
+
+  for (let weeksAgo = 0; weeksAgo < weeks; weeksAgo++) {
+    const range = getHistoricalWeekRange(weeksAgo);
+    const preset = {
+      name: `esaurito_week_${weeksAgo + 1}`,
+      label: `Esaurito storico settimana ${weeksAgo + 1}`,
+      selData: '5',
+      selStatus: '3',
+      selTabella: '1',
+      dateFrom: range.start.toISOString(),
+      dateTo: range.end.toISOString(),
+    };
+
+    const rows = await fetchAllPages(bPage, preset);
+    const salesMap = sumByGusto(rows);
+    history.push({
+      weekIndex: weeksAgo + 1,
+      start: range.start,
+      end: range.end,
+      rows,
+      salesMap,
+    });
+
+    log.info('Historical week %d: %s -> %s, %d rows', weeksAgo + 1, range.start.toISOString().slice(0, 10), range.end.toISOString().slice(0, 10), rows.length);
+  }
+
+  return history;
+}
+
+function parseItalianDateTime(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+
+  const match = text.match(/^(\d{2})-(\d{2})-(\d{4})(?:\s+(\d{2}):(\d{2}))?/);
+  if (!match) return null;
+
+  const [, dd, mm, yyyy, hh = '00', min = '00'] = match;
+  return new Date(Number(yyyy), Number(mm) - 1, Number(dd), Number(hh), Number(min), 0, 0);
+}
+
+async function fetchWeeklyArrivalHistory(bPage, weeks = 8) {
+  const history = [];
+
+  for (let weeksAgo = 0; weeksAgo < weeks; weeksAgo++) {
+    const range = getHistoricalWeekRange(weeksAgo);
+    const preset = {
+      name: `mantenimento_week_${weeksAgo + 1}`,
+      label: `Mantenimento storico settimana ${weeksAgo + 1}`,
+      selData: '5',
+      selStatus: '1',
+      selTabella: '0',
+      dateFrom: range.start.toISOString(),
+      dateTo: range.end.toISOString(),
+    };
+
+    const rows = await fetchAllPages(bPage, preset);
+    const arrivalsByFlavor = new Map();
+
+    for (const row of rows) {
+      const gusto = String(row?.[1] ?? '').trim();
+      const updatedAt = parseItalianDateTime(row?.[4]);
+      if (!gusto || !updatedAt) continue;
+
+      const arrivalDateKey = updatedAt.toISOString().slice(0, 10);
+      if (!arrivalsByFlavor.has(gusto)) {
+        arrivalsByFlavor.set(gusto, new Set());
+      }
+      arrivalsByFlavor.get(gusto).add(arrivalDateKey);
+    }
+
+    history.push({
+      weekIndex: weeksAgo + 1,
+      start: range.start,
+      end: range.end,
+      rows,
+      arrivalsByFlavor,
+    });
+
+    log.info('Arrival week %d: %s -> %s, %d rows', weeksAgo + 1, range.start.toISOString().slice(0, 10), range.end.toISOString().slice(0, 10), rows.length);
+  }
+
+  return history;
 }
 
 // -- Template name mapping --------------------------------------------------
@@ -321,6 +438,20 @@ function pickTemplateFilePath() {
   throw new Error('No supported template file found. Expected one of: ' + candidates.join(', '));
 }
 
+function pickTemplateStructurePath() {
+  const candidates = [
+    'gelato_flavors.xlsx',
+    'gelato_flavors_ONLY_ORDINE.xlsx',
+    'Flavor_Inventory_Template.xlsx',
+  ];
+
+  for (const file of candidates) {
+    if (fs.existsSync(file)) return file;
+  }
+
+  throw new Error('No supported template structure file found. Expected one of: ' + candidates.join(', '));
+}
+
 function detectFlavorOrderColumns(headerRow) {
   const normalize = (value) => String(value ?? '').trim().toUpperCase();
   const metricHeaders = new Set(['ESAURITO', 'MANTENIMENTO', 'ORDINE']);
@@ -355,15 +486,103 @@ function detectFlavorOrderColumns(headerRow) {
   return pairs;
 }
 
+function buildFlavorMetadataMap(actualFlavorNames) {
+  const structurePath = pickTemplateStructurePath();
+  const wb = XLSX.readFile(structurePath);
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
+  const headerRow = data[0] ?? [];
+  const columnPairs = detectFlavorOrderColumns(headerRow);
+  const qtyMap = new Map(Array.from(actualFlavorNames, (name) => [name, 0]));
+  const metadata = new Map();
+  const currentSectionByFlavorCol = new Map();
+
+  for (let r = 1; r < data.length; r++) {
+    for (const pair of columnPairs) {
+      const templateName = data[r]?.[pair.flavorCol];
+      if (!templateName) continue;
+      const rawName = String(templateName).trim();
+      if (!rawName) continue;
+
+      const normalizedRaw = normalizeFlavorName(rawName);
+      if (normalizedRaw === 'SPECIALI') {
+        currentSectionByFlavorCol.set(pair.flavorCol, 'SPECIALI');
+        continue;
+      }
+
+      const category = String(headerRow[pair.flavorCol] ?? '').trim().toUpperCase();
+      const resolved = resolveDataFlavorName(templateName, qtyMap);
+      if (resolved) {
+        metadata.set(resolved, {
+          category,
+          section: currentSectionByFlavorCol.get(pair.flavorCol) || null,
+        });
+      }
+    }
+  }
+
+  return metadata;
+}
+
+function calculateStandardDeviation(values) {
+  if (!values.length) return 0;
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const variance = values.reduce((sum, value) => sum + ((value - mean) ** 2), 0) / values.length;
+  return Math.sqrt(variance);
+}
+
+function calculateForecast(historyRecentFirst) {
+  const weights = [0.4, 0.3, 0.2, 0.1];
+  let forecast = 0;
+  for (let i = 0; i < weights.length; i++) {
+    forecast += weights[i] * (historyRecentFirst[i] || 0);
+  }
+  return forecast;
+}
+
+function getSeasonalMultiplier(category, now = new Date()) {
+  const month = now.getMonth() + 1;
+  const upper = String(category ?? '').toUpperCase();
+
+  if (upper.includes('SORBETTI')) {
+    return month >= 5 && month <= 9 ? 1.25 : 1.0;
+  }
+  if (upper.includes('CREME')) {
+    return month >= 10 || month <= 3 ? 1.1 : 1.0;
+  }
+  if (upper.includes('CIOCCOLATI')) {
+    return 1.05;
+  }
+  return 1.0;
+}
+
+function getSpecialSectionMultiplier(section) {
+  return String(section ?? '').toUpperCase() === 'SPECIALI' ? 0.55 : 1.0;
+}
+
+function calculateFinalOrder(target, currentStock, section) {
+  const netNeed = target - currentStock;
+  if (String(section ?? '').toUpperCase() === 'SPECIALI' && netNeed < 1.0) {
+    return 0;
+  }
+  return Math.max(0, Math.ceil(netNeed));
+}
+
+function calculateAverageArrivalsPerWeek(arrivalHistoryRecentFirst) {
+  if (!arrivalHistoryRecentFirst.length) return 1;
+  const avg = arrivalHistoryRecentFirst.reduce((sum, count) => sum + count, 0) / arrivalHistoryRecentFirst.length;
+  return Math.max(1, Math.round(avg));
+}
+
 /**
  * Read the Excel template, fill in Qty columns from Da Ordinare data, save.
  */
 function fillExcelTemplate(daOrdinareRows) {
-  const templatePath = pickTemplateFilePath();
-  const wb = XLSX.readFile(templatePath);
-  const firstSheet = wb.SheetNames[0];
-  const ws = wb.Sheets[firstSheet];
-  const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
+  const structurePath = pickTemplateStructurePath();
+  const sourceWb = XLSX.readFile(structurePath);
+  const sourceSheetName = sourceWb.SheetNames[0];
+  const sourceWs = sourceWb.Sheets[sourceSheetName];
+  const sourceData = XLSX.utils.sheet_to_json(sourceWs, { header: 1 });
 
   // Build gusto -> order qty map from daOrdinareRows [gusto, stato, qty]
   const qtyMap = new Map();
@@ -371,42 +590,62 @@ function fillExcelTemplate(daOrdinareRows) {
     qtyMap.set(row[0], parseInt(row[2], 10) || 0);
   }
 
-  const headerRow = data[0] ?? [];
+  const headerRow = sourceData[0] ?? [];
   const columnPairs = detectFlavorOrderColumns(headerRow);
 
   if (columnPairs.length === 0) {
-    throw new Error(`Template format not supported in ${templatePath}: could not detect flavor/ORDINE columns`);
+    throw new Error(`Template format not supported in ${structurePath}: could not detect flavor/ORDINE columns`);
   }
+
+  const rebuiltData = [
+    columnPairs.flatMap((pair) => {
+      const category = String(headerRow[pair.flavorCol] ?? '').trim() || 'Categoria';
+      return [category, 'ESAURITO', 'MANTENIMENTO', 'ORDINE'];
+    }),
+  ];
 
   let filled = 0;
 
-  for (let r = 1; r < data.length; r++) {
+  for (let r = 1; r < sourceData.length; r++) {
+    const outRow = [];
+    let hasFlavor = false;
+
     for (const pair of columnPairs) {
-      const templateName = data[r]?.[pair.flavorCol];
-      if (!templateName) continue;
+      const templateName = sourceData[r]?.[pair.flavorCol];
+      const flavorText = String(templateName ?? '').trim();
+
+      if (!flavorText) {
+        outRow.push('', '', '', '');
+        continue;
+      }
+
+      hasFlavor = true;
 
       const dataName = resolveDataFlavorName(templateName, qtyMap);
-      if (!dataName) continue;
-
-      const qty = qtyMap.get(dataName) ?? 0;
-      const cellRef = XLSX.utils.encode_cell({ r: r, c: pair.ordineCol });
-      ws[cellRef] = { t: 'n', v: qty };
-      if (!data[r]) data[r] = [];
-      data[r][pair.ordineCol] = qty;
+      const qty = dataName ? (qtyMap.get(dataName) ?? 0) : 0;
+      outRow.push(flavorText, '', '', qty > 0 ? qty : '');
       if (qty > 0) filled++;
+    }
+
+    if (hasFlavor) {
+      rebuiltData.push(outRow);
     }
   }
 
+  const ws = XLSX.utils.aoa_to_sheet(rebuiltData);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Flavors');
+
   const outPath = 'output/shocapp_template_filled.xlsx';
   XLSX.writeFile(wb, outPath);
-  log.info('Excel template filled from %s (%s): %d items with qty > 0 -> %s', templatePath, firstSheet, filled, outPath);
+  log.info('Excel template recreated from %s (%s): %d items with qty > 0 -> %s', structurePath, sourceSheetName, filled, outPath);
 
   return {
     sheet: ws,
-    data,
+    data: rebuiltData,
     columnPairs,
-    sheetName: firstSheet,
-    templatePath,
+    sheetName: 'Flavors',
+    templatePath: structurePath,
   };
 }
 
@@ -415,6 +654,7 @@ function fillExcelTemplate(daOrdinareRows) {
  */
 function exportCleanXlsx(filledTemplateSheet, presetRows, daOrdinareHeaders, daOrdinareRows) {
   const wb = XLSX.utils.book_new();
+  let ordiniSheetName = null;
 
   // Sheet 1: Ordini Settimanali (filled template)
   if (filledTemplateSheet) {
@@ -422,7 +662,8 @@ function exportCleanXlsx(filledTemplateSheet, presetRows, daOrdinareHeaders, daO
     const dd = String(now.getDate()).padStart(2, '0');
     const mm = String(now.getMonth() + 1).padStart(2, '0');
     const yyyy = now.getFullYear();
-    XLSX.utils.book_append_sheet(wb, filledTemplateSheet, `Ordini Settimanali ${dd}-${mm}-${yyyy}`);
+    ordiniSheetName = `Ordini Settimanali ${dd}-${mm}-${yyyy}`;
+    XLSX.utils.book_append_sheet(wb, filledTemplateSheet, ordiniSheetName);
   }
 
   // Sheet 2: Mantenimento
@@ -440,6 +681,11 @@ function exportCleanXlsx(filledTemplateSheet, presetRows, daOrdinareHeaders, daO
   const outPath = 'output/shocapp_report.xlsx';
   XLSX.writeFile(wb, outPath);
   log.info('Clean xlsx: %d sheets -> %s', wb.SheetNames.length, outPath);
+
+  return {
+    reportPath: outPath,
+    ordiniSheetName,
+  };
 }
 
 function normalizeFlavorName(value) {
@@ -483,7 +729,145 @@ function buildTemplateOrderRows(templateData, columnPairs) {
   return rows;
 }
 
-async function exportOrderPdf(templateInfo, daOrdinareRows) {
+function resolvePythonExecutable() {
+  const localVenvPython = path.resolve('.venv', 'Scripts', 'python.exe');
+  if (fs.existsSync(localVenvPython)) {
+    return localVenvPython;
+  }
+  return process.platform === 'win32' ? 'python' : 'python3';
+}
+
+async function formatWorkbookForPdf(inputPath, outputPath = inputPath, sheetName = null, onlySheet = false) {
+  const pythonExe = resolvePythonExecutable();
+  const formatterScript = path.resolve('src', 'format_excel_for_pdf.py');
+  const args = [formatterScript, inputPath, outputPath];
+
+  if (sheetName) {
+    args.push('--sheet', sheetName);
+  }
+  if (onlySheet) {
+    args.push('--only-sheet');
+  }
+
+  await execFileAsync(pythonExe, args, {
+    cwd: process.cwd(),
+    windowsHide: true,
+  });
+
+  log.info('Workbook formatted for PDF conversion: %s', outputPath);
+  return outputPath;
+}
+
+function createPdfSourceWorkbookFromOrdiniSheet(reportPath, ordiniSheetName, outPath, totalVaschette) {
+  const reportWb = XLSX.readFile(reportPath);
+  const sourceWs = reportWb.Sheets[ordiniSheetName];
+  if (!sourceWs) {
+    throw new Error(`Sheet not found in report: ${ordiniSheetName}`);
+  }
+
+  const data = XLSX.utils.sheet_to_json(sourceWs, { header: 1 });
+  const headerRow = data[0] ?? [];
+  const columnPairs = detectFlavorOrderColumns(headerRow);
+
+  if (columnPairs.length === 0) {
+    throw new Error(`Could not detect flavor/ORDINE columns in report sheet: ${ordiniSheetName}`);
+  }
+
+  const reducedRows = data.map((row, rowIndex) => {
+    const outRow = [];
+    for (const pair of columnPairs) {
+      const flavorValue = row?.[pair.flavorCol] ?? '';
+      const ordineValue = row?.[pair.ordineCol] ?? '';
+      if (rowIndex === 0) {
+        outRow.push(String(flavorValue || '').trim(), 'ORDINE');
+      } else {
+        outRow.push(flavorValue, ordineValue);
+      }
+    }
+    return outRow;
+  });
+
+  const filteredRows = [reducedRows[0], ...reducedRows.slice(1).filter((row) => row.some((v) => String(v ?? '').trim() !== ''))];
+
+  // Add total in a single bottom-left cell as requested.
+  filteredRows.push([`Totale vaschette: ${totalVaschette}`]);
+
+  const outWb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(outWb, XLSX.utils.aoa_to_sheet(filteredRows), 'Ordini Settimanali');
+  XLSX.writeFile(outWb, outPath);
+  log.info('Prepared PDF source workbook (Flavor + ORDINE only): %s', outPath);
+  return outPath;
+}
+
+async function convertExcelToPdfViaILovePdf(browser, excelPath, outputPdfPath) {
+  const context = await browser.newContext({ acceptDownloads: true });
+  const page = await context.newPage();
+
+  try {
+    await page.goto('https://www.ilovepdf.com/excel_to_pdf', { waitUntil: 'domcontentloaded', timeout: 120000 });
+
+    const acceptButton = page.getByText('ACCEPT ALL', { exact: true });
+    if (await acceptButton.count()) {
+      await acceptButton.click({ timeout: 5000 }).catch(() => {});
+    }
+
+    const fileInput = page.locator('input[type="file"]').first();
+    await fileInput.waitFor({ state: 'attached', timeout: 60000 });
+    await fileInput.setInputFiles(path.resolve(excelPath));
+
+    const processButton = page.locator('#processTask, button:has-text("Convert to PDF"), a:has-text("Convert to PDF")').first();
+    await processButton.waitFor({ state: 'visible', timeout: 120000 });
+    await processButton.click();
+
+    const downloadButton = page.locator('#download, a:has-text("Download PDF"), button:has-text("Download PDF")').first();
+    await downloadButton.waitFor({ state: 'visible', timeout: 180000 });
+
+    const [download] = await Promise.all([
+      page.waitForEvent('download', { timeout: 180000 }),
+      downloadButton.click(),
+    ]);
+
+    await fs.promises.mkdir(path.dirname(outputPdfPath), { recursive: true });
+    await download.saveAs(path.resolve(outputPdfPath));
+    log.info('Order PDF converted via iLovePDF: %s', outputPdfPath);
+    return outputPdfPath;
+  } finally {
+    await context.close();
+  }
+}
+
+async function exportOrderPdf(templateInfo, daOrdinareRows, browser, reportInfo) {
+  const pdfSourceWorkbookRawPath = 'output/shocapp_ordini_settimanali_for_pdf_raw.xlsx';
+  const pdfSourceWorkbookPath = 'output/shocapp_ordini_settimanali_for_pdf.xlsx';
+  const outPath = 'output/shocapp_da_ordinare.pdf';
+
+  try {
+    if (!reportInfo?.reportPath || !reportInfo?.ordiniSheetName) {
+      throw new Error('Ordini Settimanali sheet not available in report');
+    }
+
+    const totalVaschette = computeTotalOrderExcludingMascarpone(daOrdinareRows);
+    createPdfSourceWorkbookFromOrdiniSheet(
+      reportInfo.reportPath,
+      reportInfo.ordiniSheetName,
+      pdfSourceWorkbookRawPath,
+      totalVaschette,
+    );
+
+    await formatWorkbookForPdf(
+      pdfSourceWorkbookRawPath,
+      pdfSourceWorkbookPath,
+      'Ordini Settimanali',
+      true,
+    );
+
+    if (browser) {
+      return await convertExcelToPdfViaILovePdf(browser, pdfSourceWorkbookPath, outPath);
+    }
+  } catch (error) {
+    log.warn('Excel->PDF web conversion failed (%s). Falling back to local PDF generation.', error.message);
+  }
+
   const templatePdfPath = 'TEMPLATE PDF.pdf';
   if (fs.existsSync(templatePdfPath)) {
     const outPathFromTemplate = await exportOrderPdfFromPdfTemplate(templateInfo, daOrdinareRows, templatePdfPath);
@@ -551,7 +935,36 @@ async function exportOrderPdfFromPdfTemplate(templateInfo, daOrdinareRows, templ
     const usedIndexes = new Set();
 
     const page = pdfDoc.getPages()[0];
-    const qtyFontSize = 10;
+    const qtyFontSize = 7;
+    const sortedOrdineCenters = ordineHeaders.map(h => h.xCenter).sort((a, b) => a - b);
+
+    const placements = [];
+    const occupied = new Set();
+
+    const groupForX = (x) => {
+      if (sortedOrdineCenters.length === 0) return 0;
+      let bestIdx = 0;
+      let bestDiff = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < sortedOrdineCenters.length; i++) {
+        const d = Math.abs(sortedOrdineCenters[i] - x);
+        if (d < bestDiff) {
+          bestDiff = d;
+          bestIdx = i;
+        }
+      }
+      return bestIdx;
+    };
+
+    const allTemplateFlavors = [];
+    for (let r = 0; r < templateData.length; r++) {
+      for (const pair of columnPairs) {
+        const flavorRaw = String(templateData[r]?.[pair.flavorCol] ?? '').trim();
+        if (!flavorRaw) continue;
+        const normFlavor = normalize(flavorRaw);
+        if (!normFlavor) continue;
+        allTemplateFlavors.push(normFlavor);
+      }
+    }
 
     for (const entry of entries) {
       const targetNorm = normalize(entry.flavor);
@@ -566,21 +979,33 @@ async function exportOrderPdfFromPdfTemplate(templateInfo, daOrdinareRows, templ
 
       const selected = candidates[0];
       usedIndexes.add(selected.idx);
-
       const flavorItem = selected.item;
+
       let ordineCenterX = flavorItem.x + flavorItem.width + 36;
-      if (ordineHeaders.length > 0) {
-        ordineCenterX = ordineHeaders.reduce((best, current) => {
-          const bestDiff = Math.abs(best - (flavorItem.x + flavorItem.width));
-          const currentDiff = Math.abs(current.xCenter - (flavorItem.x + flavorItem.width));
-          return currentDiff < bestDiff ? current.xCenter : best;
-        }, ordineHeaders[0].xCenter);
+      if (sortedOrdineCenters.length > 0) {
+        const rightSide = sortedOrdineCenters.filter((x) => x > flavorItem.x + flavorItem.width - 2);
+        if (rightSide.length > 0) {
+          ordineCenterX = rightSide[0];
+        } else {
+          ordineCenterX = sortedOrdineCenters[sortedOrdineCenters.length - 1];
+        }
       }
 
       const qtyText = String(entry.qty);
       const textWidth = helveticaBold.widthOfTextAtSize(qtyText, qtyFontSize);
+      const cellWidth = Math.max(18, textWidth + 8);
+      const cellHeight = Math.max(10, flavorItem.height * 1.15);
+      const cellX = ordineCenterX - (cellWidth / 2);
+      let cellY = flavorItem.y - (cellHeight * 0.34);
+
+      const keyBase = `${Math.round(ordineCenterX)}:${Math.round(cellY)}`;
+      if (occupied.has(keyBase)) {
+        cellY -= cellHeight + 1;
+      }
+      occupied.add(`${Math.round(ordineCenterX)}:${Math.round(cellY)}`);
+
       const drawX = ordineCenterX - (textWidth / 2);
-      const drawY = flavorItem.y - (qtyFontSize * 0.15);
+      const drawY = cellY + ((cellHeight - qtyFontSize) / 2) + 0.2;
 
       page.drawText(qtyText, {
         x: drawX,
@@ -589,6 +1014,84 @@ async function exportOrderPdfFromPdfTemplate(templateInfo, daOrdinareRows, templ
         font: helveticaBold,
         color: rgb(0.08, 0.08, 0.08),
       });
+
+      placements.push({
+        flavorX: flavorItem.x,
+        ordineCenterX,
+        groupIndex: groupForX(ordineCenterX),
+        cellX,
+        cellY,
+        cellWidth,
+        cellHeight,
+      });
+    }
+
+    if (placements.length > 0) {
+      const rowCenters = [];
+
+      for (const normFlavor of allTemplateFlavors) {
+        const flavorMatches = textItems.filter((it) => it.norm === normFlavor);
+        for (const m of flavorMatches) {
+          const centerY = m.y + (m.height / 2);
+          const existing = rowCenters.find((v) => Math.abs(v - centerY) < 2.2);
+          if (!existing) rowCenters.push(centerY);
+        }
+      }
+
+      for (const p of placements) {
+        const centerY = p.cellY + p.cellHeight / 2;
+        const existing = rowCenters.find((v) => Math.abs(v - centerY) < 2.2);
+        if (!existing) rowCenters.push(centerY);
+      }
+
+      rowCenters.sort((a, b) => b - a);
+
+      const avgCellHeight = placements.reduce((s, p) => s + p.cellHeight, 0) / placements.length;
+      const rowHeight = Math.max(10, avgCellHeight + 1);
+
+      const leftBound = Math.min(...placements.map(p => p.flavorX)) - 4;
+      const rightBound = Math.max(...placements.map(p => p.cellX + p.cellWidth)) + 4;
+
+      const centersByGroup = [];
+      for (let i = 0; i < sortedOrdineCenters.length; i++) {
+        centersByGroup.push(sortedOrdineCenters[i]);
+      }
+      if (centersByGroup.length === 0) {
+        centersByGroup.push(...Array.from(new Set(placements.map(p => p.ordineCenterX))).sort((a, b) => a - b));
+      }
+
+      const groupBounds = [];
+      for (let i = 0; i < centersByGroup.length; i++) {
+        const left = i === 0 ? leftBound : (centersByGroup[i - 1] + centersByGroup[i]) / 2;
+        const right = i === centersByGroup.length - 1 ? rightBound : (centersByGroup[i] + centersByGroup[i + 1]) / 2;
+        groupBounds.push({ left, right, center: centersByGroup[i] });
+      }
+
+      const rowTop = rowCenters[0] + rowHeight / 2;
+      const rowBottom = rowCenters[rowCenters.length - 1] - rowHeight / 2;
+
+      // Horizontal lines (full table width)
+      page.drawLine({ start: { x: leftBound, y: rowTop }, end: { x: rightBound, y: rowTop }, thickness: 0.8, color: rgb(0.2, 0.2, 0.2) });
+      for (const c of rowCenters) {
+        const y = c - rowHeight / 2;
+        page.drawLine({ start: { x: leftBound, y }, end: { x: rightBound, y }, thickness: 0.7, color: rgb(0.2, 0.2, 0.2) });
+      }
+
+      // Vertical outer borders
+      page.drawLine({ start: { x: leftBound, y: rowTop }, end: { x: leftBound, y: rowBottom }, thickness: 0.8, color: rgb(0.2, 0.2, 0.2) });
+      page.drawLine({ start: { x: rightBound, y: rowTop }, end: { x: rightBound, y: rowBottom }, thickness: 0.8, color: rgb(0.2, 0.2, 0.2) });
+
+      // Group and ORDINE divider lines
+      for (let i = 0; i < groupBounds.length; i++) {
+        const g = groupBounds[i];
+        if (i > 0) {
+          page.drawLine({ start: { x: g.left, y: rowTop }, end: { x: g.left, y: rowBottom }, thickness: 0.7, color: rgb(0.2, 0.2, 0.2) });
+        }
+        const qtyDivider = g.center - 12;
+        if (qtyDivider > g.left + 12 && qtyDivider < g.right - 8) {
+          page.drawLine({ start: { x: qtyDivider, y: rowTop }, end: { x: qtyDivider, y: rowBottom }, thickness: 0.6, color: rgb(0.35, 0.35, 0.35) });
+        }
+      }
     }
 
     if (totalLabel) {
@@ -848,6 +1351,7 @@ async function sendToTelegram() {
 
   const files = [
     'output/shocapp_template_filled.xlsx',
+    'output/shocapp_da_ordinare.pdf',
     'output/shocapp_report.xlsx',
   ];
 
@@ -888,6 +1392,7 @@ async function sendEmail() {
 
   const files = [
     'output/shocapp_template_filled.xlsx',
+    'output/shocapp_da_ordinare.pdf',
     'output/shocapp_report.xlsx',
   ];
   const attachments = files
@@ -983,42 +1488,63 @@ export async function extractShocapp() {
     }
 
     // -- Build "Da Ordinare" CSV --------------------------------------------
-    // A = last week sales (Esaurito 7 giorni)
-    // B = current usable stock (Mantenimento)
-    // C = incoming stock (not available, 0)
-    // D = safety stock = ceil(A * 0.15)
-    // Order = MAX(0, A + D - B - C)
-    const COL_GUSTO = 1;
-    const COL_VASCHE = 4;
+    // Forecast next week with weighted moving average of the last 4 weeks,
+    // add variability buffer from the last 8 weeks, then apply seasonal multiplier.
     const mRows = presetRows['mantenimento_tutto'] ?? [];
     const eRows = presetRows['esaurito_7giorni'] ?? [];
 
-    // Sum N. Vasche per Gusto in each dataset
-    const sumByGusto = (rows) => {
-      const map = new Map();
-      for (const r of rows) {
-        const gusto = r[COL_GUSTO];
-        const n = parseInt(r[COL_VASCHE], 10) || 0;
-        map.set(gusto, (map.get(gusto) || 0) + n);
-      }
-      return map;
-    };
-
-    const mMap = sumByGusto(mRows);  // B per gusto
-    const eMap = sumByGusto(eRows);  // A per gusto
+    const mMap = sumByGusto(mRows);
+    const eMap = sumByGusto(eRows);
+    const weeklyHistory = await fetchWeeklySalesHistory(bPage, 8);
+    const weeklyArrivalHistory = await fetchWeeklyArrivalHistory(bPage, 8);
 
     const allGusti = new Set([...mMap.keys(), ...eMap.keys()]);
+    for (const week of weeklyHistory) {
+      for (const gusto of week.salesMap.keys()) {
+        allGusti.add(gusto);
+      }
+    }
+    for (const week of weeklyArrivalHistory) {
+      for (const gusto of week.arrivalsByFlavor.keys()) {
+        allGusti.add(gusto);
+      }
+    }
+
+    const flavorMetadataMap = buildFlavorMetadataMap(allGusti);
     const daOrdinareHeaders = ['Gusto', 'Stato', 'N. Vasche'];
     const daOrdinareRows = [];
 
     for (const gusto of allGusti) {
-      const A = eMap.get(gusto) || 0;  // last week sales
-      const B = mMap.get(gusto) || 0;  // current usable stock
-      const C = 0;                      // incoming stock
-      const D = Math.ceil(A * 0.15);    // safety stock (15% buffer)
+      const salesHistory = weeklyHistory.map((week) => week.salesMap.get(gusto) || 0);
+      const arrivalsHistory = weeklyArrivalHistory.map((week) => week.arrivalsByFlavor.get(gusto)?.size || 0);
+      const forecast = calculateForecast(salesHistory);
+      const buffer = calculateStandardDeviation(salesHistory);
+      const flavorMetadata = flavorMetadataMap.get(gusto) || { category: 'GELATO', section: null };
+      const category = flavorMetadata.category;
+      const section = flavorMetadata.section;
+      const seasonalMultiplier = getSeasonalMultiplier(category);
+      const specialSectionMultiplier = getSpecialSectionMultiplier(section);
+      const currentStock = mMap.get(gusto) || 0;
+      const weeklyTargetStock = (((forecast * seasonalMultiplier) + buffer) * specialSectionMultiplier);
+      const weeklyOrder = calculateFinalOrder(weeklyTargetStock, currentStock, section);
+      const arrivalsPerWeek = calculateAverageArrivalsPerWeek(arrivalsHistory);
+      const orderPerArrival = weeklyOrder > 0 ? Math.ceil(weeklyOrder / arrivalsPerWeek) : 0;
 
-      const order = Math.max(0, A + D - B - C);
-      daOrdinareRows.push([gusto, 'Da Ordinare', String(order)]);
+      log.info(
+        'Forecast %s | weekly_history=%s | arrivals=%s | weekly_forecast=%s | buffer=%s | season=%s | weekly_target=%s | stock=%d | arrivals_per_week=%d | order_per_arrival=%d',
+        gusto,
+        salesHistory.join(','),
+        arrivalsHistory.join(','),
+        forecast.toFixed(2),
+        buffer.toFixed(2),
+        seasonalMultiplier.toFixed(2),
+        weeklyTargetStock.toFixed(2),
+        currentStock,
+        arrivalsPerWeek,
+        orderPerArrival,
+      );
+
+      daOrdinareRows.push([gusto, 'Da Ordinare', String(orderPerArrival)]);
     }
 
     const daOrdPath = 'output/shocapp_da_ordinare';
@@ -1031,11 +1557,11 @@ export async function extractShocapp() {
     // -- Fill Excel template ------------------------------------------------
     const templateInfo = fillExcelTemplate(daOrdinareRows);
 
-    // -- Export order-only PDF ----------------------------------------------
-    const orderPdfPath = await exportOrderPdf(templateInfo, daOrdinareRows);
-
     // -- Clean multi-sheet xlsx ---------------------------------------------
-    exportCleanXlsx(templateInfo.sheet, presetRows, daOrdinareHeaders, daOrdinareRows);
+    const reportInfo = exportCleanXlsx(templateInfo.sheet, presetRows, daOrdinareHeaders, daOrdinareRows);
+
+    // -- Export order-only PDF ----------------------------------------------
+    const orderPdfPath = await exportOrderPdf(templateInfo, daOrdinareRows, browser, reportInfo);
 
     // -- Bundle all formats into a ZIP and keep final output xlsx-only ------
     const temporaryFiles = [

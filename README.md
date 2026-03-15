@@ -229,3 +229,21 @@ For the bot workflow, your Telegram chat should receive a startup message. You c
 ```powershell
 gh workflow run weekly-extract-bot.yml -R miladreihanpour-programmer/fatamorgana
 ```
+
+## Manual Excel To PDF Renderer
+
+For wide grouped Excel files such as `gelato_flavors.xlsx`, use the Python renderer instead of Excel print-to-PDF.
+
+Install the Python packages once:
+
+```powershell
+d:\fata\.venv\Scripts\python.exe -m pip install pandas openpyxl reportlab
+```
+
+Generate a readable landscape PDF:
+
+```powershell
+d:\fata\.venv\Scripts\python.exe src\excel_to_pdf.py gelato_flavors.xlsx gelato_flavors.pdf
+```
+
+The script preserves grouped columns, repeats the header across pages, and automatically uses a wide enough landscape page so text stays readable.
