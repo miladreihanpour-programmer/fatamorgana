@@ -465,16 +465,16 @@ function buildTemplateOrderRows(templateData, columnPairs) {
   const rows = [];
   for (let r = 1; r < templateData.length; r++) {
     const resultRow = [];
-    let hasFlavor = false;
+    let hasAnyOrder = false;
 
     for (const pair of columnPairs) {
       const flavor = String(templateData[r]?.[pair.flavorCol] ?? '').trim();
       const qty = parseInt(templateData[r]?.[pair.ordineCol], 10) || 0;
-      if (flavor) hasFlavor = true;
+      if (qty > 0) hasAnyOrder = true;
       resultRow.push({ flavor, qty: qty > 0 ? qty : '' });
     }
 
-    if (hasFlavor) {
+    if (hasAnyOrder) {
       rows.push(resultRow);
     }
   }
@@ -516,7 +516,7 @@ async function exportOrderPdf(templateInfo, daOrdinareRows) {
       align: 'left',
     });
 
-    doc.font('Helvetica').fontSize(10).text(
+    doc.font('Helvetica').fontSize(10).fillColor('#333333').text(
       `Totale vaschette: ${totalVaschette}`,
       left,
       top + 15,
@@ -528,7 +528,7 @@ async function exportOrderPdf(templateInfo, daOrdinareRows) {
     const totalRows = Math.max(1, tableRows.length) + headerRows;
     const availableHeight = Math.max(40, bottom - startY - 4);
     const rowHeight = availableHeight / totalRows;
-    const fontSize = Math.max(4.5, Math.min(9, rowHeight * 0.55));
+    const fontSize = Math.max(6.5, Math.min(10.5, rowHeight * 0.5));
 
     const groupCount = columnPairs.length;
     const groupWidth = tableWidth / groupCount;
@@ -542,26 +542,42 @@ async function exportOrderPdf(templateInfo, daOrdinareRows) {
     });
 
     let y = startY;
-    doc.font('Helvetica-Bold').fontSize(fontSize);
+    doc.font('Helvetica-Bold').fontSize(fontSize).fillColor('#111111');
     for (let i = 0; i < groupCount; i++) {
       const groupLeft = left + i * groupWidth;
       const xFlavor = groupLeft;
       const xQty = groupLeft + flavorColWidth;
-      doc.text(headerLabels[i], xFlavor + 2, y + 2, { width: flavorColWidth - 4, align: 'left', ellipsis: true });
-      doc.text('Ord', xQty + 2, y + 2, { width: qtyColWidth - 4, align: 'right' });
+      doc.rect(groupLeft, y, groupWidth, rowHeight).fillAndStroke('#f0f4ff', '#3f3f46');
+      doc.fillColor('#111111');
+      doc.text(headerLabels[i], xFlavor + 4, y + 3, {
+        width: flavorColWidth - 8,
+        align: 'left',
+        ellipsis: true,
+        lineBreak: false,
+      });
+      doc.text('Ord', xQty + 2, y + 3, {
+        width: qtyColWidth - 6,
+        align: 'right',
+        lineBreak: false,
+      });
     }
 
-    doc.moveTo(left, y).lineTo(right, y).stroke();
     y += rowHeight;
-    doc.moveTo(left, y).lineTo(right, y).stroke();
 
-    doc.font('Helvetica').fontSize(fontSize);
+    doc.font('Helvetica').fontSize(fontSize).fillColor('#111111');
     if (tableRows.length === 0) {
-      doc.text('Nessun ordine (> 0) da mostrare.', left + 4, y + 2, { width: tableWidth - 8, align: 'left' });
+      doc.rect(left, y, tableWidth, rowHeight).stroke('#3f3f46');
+      doc.text('Nessun ordine (> 0) da mostrare.', left + 4, y + 3, {
+        width: tableWidth - 8,
+        align: 'left',
+        lineBreak: false,
+      });
       y += rowHeight;
-      doc.moveTo(left, y).lineTo(right, y).stroke();
     } else {
-      for (const row of tableRows) {
+      for (let rowIndex = 0; rowIndex < tableRows.length; rowIndex++) {
+        const row = tableRows[rowIndex];
+        const stripe = rowIndex % 2 === 0 ? '#ffffff' : '#fafafa';
+        doc.rect(left, y, tableWidth, rowHeight).fillAndStroke(stripe, '#d4d4d8');
         const rowTextY = y + 2;
         for (let i = 0; i < groupCount; i++) {
           const groupLeft = left + i * groupWidth;
@@ -569,11 +585,21 @@ async function exportOrderPdf(templateInfo, daOrdinareRows) {
           const xQty = groupLeft + flavorColWidth;
           const flavor = row[i]?.flavor ?? '';
           const qty = row[i]?.qty ?? '';
-          doc.text(flavor, xFlavor + 2, rowTextY, { width: flavorColWidth - 4, align: 'left', ellipsis: true });
-          doc.text(String(qty), xQty + 2, rowTextY, { width: qtyColWidth - 4, align: 'right' });
+          doc.fillColor('#111111');
+          doc.text(flavor, xFlavor + 4, rowTextY + 1, {
+            width: flavorColWidth - 8,
+            align: 'left',
+            ellipsis: true,
+            lineBreak: false,
+          });
+          doc.fillColor('#0f172a');
+          doc.text(String(qty), xQty + 2, rowTextY + 1, {
+            width: qtyColWidth - 6,
+            align: 'right',
+            lineBreak: false,
+          });
         }
         y += rowHeight;
-        doc.moveTo(left, y).lineTo(right, y).stroke();
       }
     }
 
@@ -581,11 +607,11 @@ async function exportOrderPdf(templateInfo, daOrdinareRows) {
       const groupLeft = left + i * groupWidth;
       const xQty = groupLeft + flavorColWidth;
       if (i > 0) {
-        doc.moveTo(groupLeft, startY).lineTo(groupLeft, y).stroke();
+        doc.moveTo(groupLeft, startY).lineTo(groupLeft, y).lineWidth(0.7).stroke('#a1a1aa');
       }
-      doc.moveTo(xQty, startY).lineTo(xQty, y).stroke();
+      doc.moveTo(xQty, startY).lineTo(xQty, y).lineWidth(0.7).stroke('#a1a1aa');
     }
-    doc.rect(left, startY, tableWidth, y - startY).stroke();
+    doc.rect(left, startY, tableWidth, y - startY).lineWidth(0.9).stroke('#3f3f46');
 
     doc.end();
   });
