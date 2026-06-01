@@ -14,7 +14,7 @@
  *   3. Read with Stato=Mantenimento + Tutto il periodo  → stock B
  *   4. Set Stato=Esaurito + Ultimi 7 giorni             → sold last 7 days A
  *   5. Set Stato=Esaurito + Tutto il periodo            → all-time sold H
- *   6. Compute orders: A=sold7d, D=ceil(A*15%), target=A+D, order=max(0, target-B)
+ *   6. Compute orders: target = ceil(A/7 * 10 days), order = max(0, target - B)
  */
 
 import 'dotenv/config';
@@ -36,11 +36,14 @@ const TEMPLATE_PATH = path.join(ROOT, 'gelato_flavors.xlsx');
 const BASE  = 'https://gelateriafatamorgana.com/fata/tracking-manager/html';
 const LOGIN = `${BASE}/login.php`;
 
+// ─── ORDERING PARAMS ──────────────────────────────────────────────────────────
+const COVER_DAYS  = 10;   // target stock = enough to cover this many days
+const MAX_ORDER   = 8;    // safety cap per flavor
+
 if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 
 // ─── NAME MAP (SHOCAPP → template) ────────────────────────────────────────────
 const NAME_MAP = {
-  // ── CIOCCOLATO → C. (abbreviated) ──
   'CIOCCOLATO AL PIMENTO':                         'C. AL PIMENTO',
   "CIOCCOLATO CRUDO DEL PERU'":                    "C. CRUDO DEL PERU'",
   'CIOCCOLATO KENTUCKY':                           'C. KENTUCKY',
@@ -57,15 +60,11 @@ const NAME_MAP = {
   'CIOCCOLATO VANIGLIA':                           'C. VANIGLIA',
   'CIOCCOLATO CANNELLA':                           'C. CANNELLA',
   'CIOCCOLATO AL WHISKY':                          'C. AL WHISKY',
-
-  // ── CREMA → C. (template uses abbreviated form) ──
   'CREMA PASTICCIERA PARISI':                      'C. PASTICCIERA PARISI',
   'CREMA AGNESE':                                  'C. AGNESE',
   'CREMA FRAGOLE E MANDORLE':                      'C. FRAGOLE E MANDORLE',
   'CREMA ZENZERO MIELE DI CASTAGNO E LIMONE':      'C. ZENZERO',
   'CREMA ZENZERO':                                 'C. ZENZERO',
-  'CREMA CANNELLA':                                'C. CANNELLA',
-  'CREMA VANIGLIA':                                'C. VANIGLIA',
   'COCCO CREMA':                                   'COCCO C.',
   'GIANDUIA VARIEGATA':                            'V. GIANDUIA VARIEGATA',
   'EVERGREEN BRONTE VEGAN':                        'V.BRONTE GREEN',
@@ -84,10 +83,8 @@ const NAME_MAP = {
   'FIORI DI LAVANDA E FRAGOLINE DI NEMI':          'LAVANDA',
   'PISTACCHIO BRONTE':                             'P.BRONTE',
   'PISTACCHIO DI BRONTE':                          'P.BRONTE',
-  'BRONTE':                                        'P.BRONTE',
-  'PISTACCHIO LARNAKA, CIPRO':                     'PISTACCHIO LARNAKA',
-  'PISTACCHIO LARNAKA , CIPRO':                    'PISTACCHIO LARNAKA',
-  'PISTACCHIO LARNAKA':                            'PISTACCHIO LARNAKA',
+  'PISTACCHIO LARNAKA, CIPRO':                     'P.BRONTE',
+  'PISTACCHIO LARNAKA , CIPRO':                    'P.BRONTE',
   'RICOTTA ROMANA, CACAO CRUDO & PERA (LA-LA-LAND)':'RICOTTA E PERA',
   'BASILICO NOCI E MIELE':                         'BASILICO',
   'ANANAS E ZENZERO':                              'ANANAS',
@@ -104,17 +101,15 @@ const NAME_MAP = {
   'ARACHIDI COCCO E CIOCCOLATO':                   'ARACHIDI',
   'MELOGRANO WONDERFUL':                           'MELOGRANO',
   'TE VERDE MATCHA':                               'TE VERDE MATCHA',
+  'CASTAGNA E MIRTO':                              'V. CASTAGNA E MIRTO',
+  'CASTAGNA AL WHISKY':                            'V. CASTAGNA AL WHISKY',
   'ZABAIONE GELATO':                               'ZABAIONE GELATO',
   'ZABAIONE NEW':                                  'ZABAIONE GELATO',
+  'CIOCCOLATO ROSEMARY':                           'C. ROSEMARY',
   'RICOTTA, MIELE E COCCO':                        'RICOTTA E COCCO',
   'RICOTTA E AGRUMI':                              'RICOTTA E AGRUMI',
   'CHEESECAKE MIRTILLI':                           'CHEESECAKE MIRTILLI',
   'BUONGIORNO AMORE':                              'BUONGIORNO AMORE',
-  // ── MANDORLA — SHOCAPP sends full name, template uses M. abbreviation ──
-  'MANDORLA AL CARDAMOMO':                         'M. AL CARDAMOMO',
-  'MANDORLA BIANCA':                               'M. BIANCA',
-  'MANDORLA E ARANCIA':                            'M. E ARANCIA',
-  'MANDORLA TOSTATA':                              'M. TOSTATA',
 };
 
 const IGNORE = new Set([
@@ -171,152 +166,49 @@ async function setTablePageSize(page) {
   await page.waitForTimeout(800);
 }
 
-// ─── Set a multi-select dropdown to ONE option (uncheck all others first) ───
-//
-// SHOCAPP uses Bootstrap-select dropdowns. The reliable approach is to set the
-// underlying <select> element's value directly and trigger Bootstrap-select's
-// refresh — this avoids fragile visual-click interactions where the plugin's
-// event handler may not fire from programmatic clicks.
+// ─── Set a dropdown by its trigger ID and the option text ────────────────────
+// This is the RELIABLE way: target the dropdown's stable #id, not its text.
 async function pickDropdown(page, triggerId, optionText) {
-  const target = optionText.toUpperCase().trim();
+  const trigger = page.locator(`button[data-id="${triggerId}"], button#${triggerId}, button[id*="${triggerId}"]`).first();
+  const fallback = page.locator(`button[data-toggle="dropdown"]`);
 
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    const result = await page.evaluate(({ triggerId, target }) => {
-      // ── Strategy 1: drive underlying <select> directly ──────────────────────
-      const sel = document.querySelector(`select[id="${triggerId}"]`);
-      if (sel) {
-        const available = Array.from(sel.options).map(o => o.text.trim());
-        const opt = Array.from(sel.options).find(
-          o => o.text.trim().toUpperCase() === target || o.value.trim().toUpperCase() === target
-        );
-        if (!opt) return { ok: false, error: 'option not in select', available };
+  // Find the right trigger: the one whose data-id (in dataset.id) matches
+  const idx = await fallback.evaluateAll((els, id) =>
+    els.findIndex(el => el.dataset?.id === id), triggerId);
 
-        // Deselect all, select target
-        for (const o of sel.options) o.selected = false;
-        opt.selected = true;
-
-        // Fire change so Bootstrap-select refreshes its button title
-        sel.dispatchEvent(new Event('change', { bubbles: true }));
-
-        // Explicit Bootstrap-select refresh if jQuery/selectpicker present
-        try {
-          if (window.jQuery && window.jQuery.fn.selectpicker) {
-            window.jQuery(sel).selectpicker('refresh');
-          }
-        } catch (_) {}
-
-        return { ok: true, via: 'select', selected: opt.text };
-      }
-
-      // ── Strategy 2: fallback — visual click inside the dropdown menu ─────────
-      const triggers = Array.from(document.querySelectorAll('button[data-toggle="dropdown"]'));
-      const btn = triggers.find(b => b.dataset?.id === triggerId);
-      if (!btn) return { ok: false, error: 'trigger not found' };
-
-      // Ensure menu is open
-      btn.click();
-      btn.setAttribute('aria-expanded', 'true');
-      let menu = btn.parentElement?.querySelector('.dropdown-menu');
-      if (!menu) return { ok: false, error: 'menu not found' };
-      menu.classList.add('show');
-      menu.style.display = 'block';
-
-      const options = Array.from(menu.querySelectorAll('a[data-original-index], li > a'));
-      const available = options.map(o => (o.textContent || '').trim());
-      const targetOpt = options.find(o => (o.textContent || '').trim().toUpperCase() === target);
-      if (!targetOpt) return { ok: false, error: 'target not in menu', available };
-
-      // Deselect others
-      for (const o of options) {
-        const cb = o.querySelector('input[type="checkbox"]');
-        if (cb && cb.checked && (o.textContent || '').trim().toUpperCase() !== target) o.click();
-        else if (o.classList.contains('selected') && (o.textContent || '').trim().toUpperCase() !== target) o.click();
-      }
-      targetOpt.click();
-
-      return { ok: true, via: 'visual', selected: targetOpt.textContent.trim(), available };
-    }, { triggerId, target });
-
-    if (!result.ok) {
-      logger.warn(`pickDropdown ${triggerId} -> "${optionText}": ${result.error}`);
-      if (result.available) logger.warn(`  options: ${result.available.slice(0, 10).join(' | ')}`);
-      await page.waitForTimeout(500);
-      continue;
-    }
-
-    logger.info(`  ✓ ${triggerId} = "${result.selected}" (via ${result.via})`);
-
-    // Close any open menu and give the page time to update
-    await page.keyboard.press('Escape');
-    await page.waitForTimeout(500);
-
-    // Verify — check both underlying select value and button title
-    const verified = await page.evaluate(({ triggerId, target }) => {
-      // Check underlying select first (most reliable)
-      const sel = document.querySelector(`select[id="${triggerId}"]`);
-      if (sel) {
-        const selected = Array.from(sel.selectedOptions).map(o => o.text.trim().toUpperCase());
-        if (selected.includes(target)) return { ok: true, via: 'select' };
-      }
-      // Fallback: check button title text
-      const triggers = Array.from(document.querySelectorAll('button[data-toggle="dropdown"]'));
-      const btn = triggers.find(b => b.dataset?.id === triggerId);
-      if (!btn) return { ok: false, text: 'btn not found' };
-      const txt = (btn.title || btn.textContent || '').toUpperCase().trim();
-      return { ok: txt.includes(target), text: txt };
-    }, { triggerId, target });
-
-    if (verified.ok) return true;
-    logger.warn(`  attempt ${attempt}: not verified (${JSON.stringify(verified)})`);
-    await page.waitForTimeout(600);
+  let btn;
+  if (idx >= 0) btn = fallback.nth(idx);
+  else if (await trigger.count()) btn = trigger;
+  else {
+    logger.warn(`Trigger ${triggerId} not found`);
+    return false;
   }
 
-  logger.error(`pickDropdown ${triggerId} -> "${optionText}" FAILED after 3 attempts`);
-  return false;
+  await btn.click({ timeout: 3000 }).catch(() => {});
+  await page.waitForTimeout(250);
+
+  // Pick option from the open menu
+  const opt = page.locator(`.dropdown-menu.show a:has-text("${optionText}"), .dropdown-menu a:has-text("${optionText}"):visible, ul.dropdown-menu li:has-text("${optionText}"):visible`).first();
+  if (!(await opt.count())) {
+    logger.warn(`Option "${optionText}" not found for ${triggerId}`);
+    // Close dropdown
+    await btn.click({ timeout: 2000 }).catch(() => {});
+    return false;
+  }
+  await opt.click({ timeout: 3000 }).catch(() => {});
+  await page.waitForTimeout(200);
+  return true;
 }
 
 // ─── Click "Cerca" (which is actually an <a>) ────────────────────────────────
-// ─── Get the "Peso complessivo" summary line (changes with every filter) ─────
-async function getPesoSummary(page) {
-  return page.evaluate(() => {
-    const rows = Array.from(document.querySelectorAll('table tr, td, th, div, p'));
-    for (const el of rows) {
-      const t = (el.textContent || '').trim();
-      if (t.startsWith('Peso complessivo')) return t;
-    }
-    return '';
-  });
-}
-
-// ─── Click "Cerca" and wait until Peso summary changes ──────────────────────
-async function clickCerca(page, prevSummary = null) {
+async function clickCerca(page) {
   const cerca = page.locator('a.btn-support3:has-text("Cerca"), a:has-text("Cerca"), .btn:has-text("Cerca")').first();
-  if (!(await cerca.count())) {
-    logger.warn('Cerca not found');
+  if (await cerca.count()) {
+    await cerca.click({ timeout: 3000 }).catch(() => {});
     await page.waitForTimeout(2000);
-    return;
-  }
-
-  // force:true bypasses overlay elements (open dropdown menus) that intercept clicks
-  await cerca.click({ timeout: 5000, force: true }).catch(e => logger.warn(`Cerca click: ${e.message}`));
-
-  if (prevSummary !== null) {
-    const maxWait = 12000;
-    const step = 400;
-    let waited = 0;
-    while (waited < maxWait) {
-      await page.waitForTimeout(step);
-      waited += step;
-      const cur = await getPesoSummary(page);
-      if (cur && cur !== prevSummary) {
-        logger.info(`  ✓ table changed after ${waited}ms  (${cur.slice(0,60)})`);
-        await page.waitForTimeout(300);
-        return;
-      }
-    }
-    logger.warn(`  ⚠️ table summary unchanged after ${maxWait}ms`);
   } else {
-    await page.waitForTimeout(2500);
+    logger.warn('Cerca link not found');
+    await page.waitForTimeout(1500);
   }
 }
 
@@ -406,103 +298,51 @@ function aggregateAndMap(rawRows, set) {
   return m;
 }
 
-// ─── Decision logic ───────────────────────────────────────────────────────
-// Rule:
-//   A = sold last 7 days
-//   D = safety stock = ceil(A * 15%)
-//   B = current stock
-//   Target = A + D (enough to cover last week + 15% buffer)
-//   Order = max(0, target - B)
-//
-// Only consider flavors with actual recent demand (A > 0 or B > 0)
-// ─── Predictive order logic ──────────────────────────────────────────────────
-//
-// Formula (blended forecast + trend-aware safety):
-//
-//   rate7d  = A / 7          (daily rate, last 7 days)
-//   rate30d = M / 30         (daily rate, last 30 days — more stable baseline)
-//   blended = 0.6*rate7d + 0.4*rate30d   (60% recent, 40% medium-term)
-//   forecast = blended * 7   (weekly units needed)
-//   trend   = rate7d / rate30d  (>1 demand rising, <1 falling) — clamped [0.5, 2.0]
-//   safety  = max(1, ceil(blended * 2))  (covers ~2 days of demand)
-//   target  = ceil(forecast) + safety
-//   order   = max(0, target - B)
-//
-// Special case: flavor sold 0 last week but active last 30 days AND out of stock
-//   → order 1 (don't let it disappear from the case entirely)
-//
-function decideOrders({ stock, sold7d, sold30d, hist }) {
-  const flavors = new Set([
-    ...Object.keys(stock),
-    ...Object.keys(sold7d),
-    ...Object.keys(sold30d),
-  ]);
+// ─── Decision logic ─────────────────────────────────────────────────────────
+function decideOrders({ stock, sold7d, hist }) {
+  const histVals = Object.values(hist).filter(v => v > 0).sort((a, b) => a - b);
+  const median   = histVals.length ? histVals[Math.floor(histVals.length / 2)] : 0;
+
+  const flavors = new Set([...Object.keys(stock), ...Object.keys(sold7d), ...Object.keys(hist)]);
   const decisions = [];
 
   for (const f of flavors) {
-    const A = sold7d[f]  ?? 0;   // sold last 7 days
-    const M = sold30d[f] ?? 0;   // sold last 30 days
-    const B = stock[f]   ?? 0;   // current stock
-    const H = hist[f]    ?? 0;   // all-time (info only)
+    const A = sold7d[f] ?? 0;
+    const B = stock[f]  ?? 0;
+    const H = hist[f]   ?? 0;
 
-    if (A === 0 && M === 0 && B === 0) continue;
+    let target, order, reason;
 
-    const rate7d  = A / 7;
-    const rate30d = M / 30;
-    const blended = 0.6 * rate7d + 0.4 * rate30d;
-
-    // Trend: how this week compares to the monthly average (clamped to avoid overreaction)
-    const rawTrend = rate30d > 0 ? rate7d / rate30d : (A > 0 ? 2.0 : 1.0);
-    const trend    = Math.min(2.0, Math.max(0.5, rawTrend));
-    const trendLabel = trend >= 1.3 ? '↑↑' : trend >= 1.1 ? '↑' : trend <= 0.7 ? '↓↓' : trend <= 0.9 ? '↓' : '→';
-
-    let order, reason;
-
-    if (M === 0 && A === 0) {
-      // No sales in 30 days — do not order
-      order = 0;
-      reason = 'nessuna vendita 30gg';
-
-    } else if (A === 0 && M > 0 && B === 0) {
-      // Sold nothing this week but was active last month and is out of stock
-      // Keep at least 1 in the case so it doesn't vanish
-      order = 1;
-      reason = `venduto nel mese (${M} vasche), assente questa settimana — ordine minimo`;
-
+    if (A === 0 && H === 0) {
+      target = 0; order = 0; reason = 'mai venduto';
     } else if (A === 0) {
-      // Has stock or no recent sales — don't order
-      order = 0;
-      reason = `nessuna vendita 7gg (30gg: ${M}, scorta: ${B})`;
-
+      // Bestseller with no recent sales: keep 1 in stock as minimum
+      target = H >= median ? 1 : 0;
+      order  = Math.max(0, target - B);
+      reason = order > 0 ? 'storico — scorta minima 1' : 'scorta sufficiente';
     } else {
-      const forecast = blended * 7;              // expected weekly demand
-      const safety   = Math.max(1, Math.ceil(blended * 2));  // 2-day buffer
-      const target   = Math.ceil(forecast) + safety;
+      const dailyRate = A / 7;
+      target = Math.ceil(dailyRate * COVER_DAYS);
+      const bestseller = H > median;
+      if (bestseller) target += 1;
       order = Math.max(0, target - B);
-
+      order = Math.min(order, MAX_ORDER);
       reason = order === 0
-        ? `scorta (${B}) copre forecast ${Math.ceil(forecast)}+safety ${safety} [trend ${trendLabel}]`
-        : `forecast ${Math.ceil(forecast)} (7d:${A} 30d:${M} trend:${trendLabel}) +safety ${safety} -scorta ${B}`;
+        ? `scorta copre ${COVER_DAYS}gg`
+        : (bestseller ? `bestseller, ${COVER_DAYS}gg + 1` : `${COVER_DAYS}gg`);
     }
 
     decisions.push({
-      flavor: f,
-      stock: B,
-      sold7d: A,
-      sold30d: M,
-      hist: H,
-      dailyRate: blended.toFixed(2),
-      trend: trendLabel,
-      target: M > 0 || A > 0 ? Math.ceil(blended * 7) + Math.max(1, Math.ceil(blended * 2)) : 0,
-      order,
-      reason,
+      flavor: f, stock: B, sold7d: A, hist: H,
+      dailyRate: A > 0 ? (A / 7).toFixed(2) : '0',
+      target, order, reason,
     });
   }
   return decisions.sort((a, b) => b.order - a.order || b.sold7d - a.sold7d);
 }
 
 // ─── Excel + PDF ────────────────────────────────────────────────────────────
-export function fillTemplate(orderMap) {
+function fillTemplate(orderMap) {
   const wb = XLSX.readFile(TEMPLATE_PATH);
   const ws = wb.Sheets['Flavors'];
   const ref = XLSX.utils.decode_range(ws['!ref']);
@@ -523,8 +363,8 @@ export function fillTemplate(orderMap) {
 }
 
 function saveDecisionsExcel(decisions) {
-  const headers = ['Gusto', 'Scorta', 'Venduti 7gg', 'Venduti 30gg', 'Venduti storici', 'Rate/giorno (blend)', 'Trend', 'Target', 'Da Ordinare', 'Motivo'];
-  const rows = decisions.map(d => [d.flavor, d.stock, d.sold7d, d.sold30d, d.hist, d.dailyRate, d.trend, d.target, d.order, d.reason]);
+  const headers = ['Gusto', 'Scorta', 'Venduti 7gg', 'Venduti storici', 'Rate/giorno', 'Target', 'Da Ordinare', 'Motivo'];
+  const rows = decisions.map(d => [d.flavor, d.stock, d.sold7d, d.hist, d.dailyRate, d.target, d.order, d.reason]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([headers, ...rows]), 'Decisioni');
   XLSX.writeFile(wb, path.join(OUTPUT_DIR, 'shocapp_da_ordinare.xlsx'));
@@ -549,117 +389,79 @@ export async function runExtraction() {
     await openShocapp(page);
 
     // Make sure we're in Sintesi mode (one row per flavor, aggregated)
-    if (!await pickDropdown(page, 'SelTabella', 'Sintesi'))
-      throw new Error('Impossibile impostare modalità Sintesi');
+    await pickDropdown(page, 'SelTabella', 'Sintesi');
 
     // ── 1. Filter to Mantenimento + Tutto il periodo ──
     logger.info('▸ Mantenimento, tutto il periodo (Sintesi)');
-    if (!await pickDropdown(page, 'SelStatus', 'Mantenimento'))
-      throw new Error('Filtro Stato=Mantenimento fallito');
-    if (!await pickDropdown(page, 'SelData', 'Tutto il periodo'))
-      throw new Error('Filtro Data=Tutto il periodo fallito');
+    await pickDropdown(page, 'SelStatus', 'Mantenimento');
+    await pickDropdown(page, 'SelData',   'Tutto il periodo');
     await clickCerca(page);
     await setTablePageSize(page);
     const stockRows = await readTable(page, 'Mantenimento');
     logger.info(`  ${stockRows.length} righe`);
-    let prevSummary = await getPesoSummary(page);
-    logger.info(`  Peso summary: ${prevSummary.slice(0,70)}`);
 
     // ── 2. Esaurito + Ultimi 7 giorni ──
     logger.info('▸ Esaurito, ultimi 7 giorni (Sintesi)');
-    if (!await pickDropdown(page, 'SelStatus', 'Esaurito'))
-      throw new Error('Filtro Stato=Esaurito fallito');
-    if (!await pickDropdown(page, 'SelData', 'Ultimi 7 giorni'))
-      throw new Error('Filtro Data=Ultimi 7 giorni fallito');
-    await clickCerca(page, prevSummary);
+    await pickDropdown(page, 'SelStatus', 'Esaurito');
+    await pickDropdown(page, 'SelData',   'Ultimi 7 giorni');
+    await clickCerca(page);
     await setTablePageSize(page);
     const sold7dRows = await readTable(page, 'Esaurito_7gg');
     logger.info(`  ${sold7dRows.length} righe`);
-    prevSummary = await getPesoSummary(page);
-    logger.info(`  Peso summary: ${prevSummary.slice(0,70)}`);
 
-    // ── 3. Esaurito + Ultimi 30 giorni ──
-    logger.info('▸ Esaurito, ultimi 30 giorni (Sintesi)');
-    if (!await pickDropdown(page, 'SelData', 'Ultimi 30 giorni'))
-      throw new Error('Filtro Data=Ultimi 30 giorni fallito');
-    await clickCerca(page, prevSummary);
-    await setTablePageSize(page);
-    const sold30dRows = await readTable(page, 'Esaurito_30gg');
-    logger.info(`  ${sold30dRows.length} righe`);
-    prevSummary = await getPesoSummary(page);
-
-    // ── 4. Esaurito + Tutto il periodo ──
+    // ── 3. Esaurito + Tutto il periodo ──
     logger.info('▸ Esaurito, tutto il periodo (Sintesi)');
-    if (!await pickDropdown(page, 'SelData', 'Tutto il periodo'))
-      throw new Error('Filtro Data=Tutto il periodo (storico) fallito');
-    await clickCerca(page, prevSummary);
+    await pickDropdown(page, 'SelData', 'Tutto il periodo');
+    await clickCerca(page);
     await setTablePageSize(page);
     const histRows = await readTable(page, 'Esaurito_storico');
     logger.info(`  ${histRows.length} righe`);
 
     await browser.close(); browser = null;
 
-    // ── Sanity check — ABORT if the filters obviously did nothing ──
+    // ── Sanity check ──
     const sig = arr => arr.map(r => `${r.flavor}:${r.qty}`).sort().join('|');
     if (sig(stockRows) === sig(sold7dRows)) {
-      throw new Error(
-        'Filtro Stato non funziona: Mantenimento e Esaurito hanno restituito gli stessi dati. ' +
-        'Controlla output/debug_*.html. Riprova tra qualche secondo.'
-      );
+      logger.warn('⚠️  Stock === Sold7d — il filtro Stato non ha funzionato!');
     }
     if (sig(sold7dRows) === sig(histRows)) {
       logger.warn('⚠️  Sold7d === Hist — il filtro Periodo non ha funzionato!');
     }
 
     // ── Aggregate raw counts (before name mapping) ──
-    const stockAgg   = aggregate(stockRows);
-    const sold7dAgg  = aggregate(sold7dRows);
-    const sold30dAgg = aggregate(sold30dRows);
-    const histAgg    = aggregate(histRows);
+    const stockAgg  = aggregate(stockRows);
+    const sold7dAgg = aggregate(sold7dRows);
+    const histAgg   = aggregate(histRows);
 
-    logger.info(`Aggregati: stock=${stockAgg.length}, sold7d=${sold7dAgg.length}, sold30d=${sold30dAgg.length}, hist=${histAgg.length} gusti`);
+    logger.info(`Aggregati: stock=${stockAgg.length}, sold7d=${sold7dAgg.length}, hist=${histAgg.length} gusti`);
 
     // ── Map to template names ──
-    const set     = loadTemplateNames();
-    const stock   = aggregateAndMap(stockRows,   set);
-    const sold7d  = aggregateAndMap(sold7dRows,  set);
-    const sold30d = aggregateAndMap(sold30dRows, set);
-    const hist    = aggregateAndMap(histRows,    set);
+    const set    = loadTemplateNames();
+    const stock  = aggregateAndMap(stockRows,  set);
+    const sold7d = aggregateAndMap(sold7dRows, set);
+    const hist   = aggregateAndMap(histRows,   set);
 
-    saveRaw(stock,   'shocapp_mantenimento.xlsx',      'Mantenimento');
-    saveRaw(sold7d,  'shocapp_esaurito_7gg.xlsx',      'Esaurito 7gg');
-    saveRaw(sold30d, 'shocapp_esaurito_30gg.xlsx',     'Esaurito 30gg');
-    saveRaw(hist,    'shocapp_esaurito_storico.xlsx',  'Storico');
+    saveRaw(stock,  'shocapp_mantenimento.xlsx',     'Mantenimento');
+    saveRaw(sold7d, 'shocapp_esaurito_7gg.xlsx',     'Esaurito 7gg');
+    saveRaw(hist,   'shocapp_esaurito_storico.xlsx', 'Storico');
 
-    const decisions = decideOrders({ stock, sold7d, sold30d, hist });
+    const decisions = decideOrders({ stock, sold7d, hist });
     saveDecisionsExcel(decisions);
 
     const orderMap = {};
     for (const d of decisions) if (d.order > 0) orderMap[d.flavor] = d.order;
 
     const filledPath = fillTemplate(orderMap);
-    const pdfPath    = await generateOrderPdf(filledPath);
-
-    // ── Verify: every order in orderMap should map to a template row ──
-    const templateNames = loadTemplateNames();
-    const missingFromTemplate = [];
-    for (const [name, qty] of Object.entries(orderMap)) {
-      if (qty > 0 && !templateNames.has(name)) missingFromTemplate.push(`${name}=${qty}`);
-    }
-    if (missingFromTemplate.length) {
-      logger.warn(`⚠️ ${missingFromTemplate.length} ordini NON appariranno nel PDF (nome non trovato nel template):`);
-      for (const m of missingFromTemplate) logger.warn(`    ${m}`);
-    }
+    const pdfPath    = await generateOrderPdf(orderMap);
 
     const ordered = decisions.filter(d => d.order > 0);
     const total   = ordered.reduce((s, d) => s + d.order, 0);
-    const totalInPdf = ordered.filter(d => templateNames.has(d.flavor)).reduce((s, d) => s + d.order, 0);
     const dt      = ((Date.now() - t0) / 1000).toFixed(1);
 
-    logger.info(`✓ ${ordered.length} gusti, ${total} vaschette calcolate, ${totalInPdf} mostrate nel PDF (in ${dt}s)`);
+    logger.info(`✓ ${ordered.length} gusti, ${total} vaschette in ${dt}s`);
     logger.info('Top decisioni:');
     for (const d of ordered.slice(0, 12)) {
-      logger.info(`  ${d.flavor.padEnd(28)} stock=${d.stock} 7d=${d.sold7d} 30d=${d.sold30d} trend=${d.trend} → ${d.order}  (${d.reason})`);
+      logger.info(`  ${d.flavor.padEnd(28)} stock=${d.stock} sold7d=${d.sold7d} hist=${d.hist} → ${d.order}  (${d.reason})`);
     }
 
     return { filledPath, pdfPath, decisions, orderMap };

@@ -1,23 +1,20 @@
 {
   "name": "gelateria-extractor",
-  "version": "1.0.0",
-  "description": "HTTP-first extractor for authenticated pages on gelateriafatamorgana.com",
+  "version": "2.0.0",
+  "description": "Automated inventory extractor for Gelateria Fata Morgana — SHOCAPP → PDF/Excel",
   "main": "src/shocappExtractor.js",
   "type": "module",
   "scripts": {
-    "shocapp": "node src/shocappExtractor.js",
-    "bot": "node src/telegramBot.js"
+    "extract": "node src/shocappExtractor.js",
+    "bot": "node src/telegramBot.js",
+    "pdf": "node src/generatePdf.js"
   },
-  "keywords": [],
-  "author": "miladreihanpour-programmer",
-  "license": "ISC",
   "dependencies": {
     "cheerio": "^1.2.0",
     "dotenv": "^17.3.1",
     "jszip": "^3.10.1",
     "nodemailer": "^8.0.2",
     "pdf-lib": "^1.17.1",
-    "pdfjs-dist": "^5.5.207",
     "pdfkit": "^0.17.2",
     "xlsx": "^0.18.5"
   },
