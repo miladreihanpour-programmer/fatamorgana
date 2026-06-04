@@ -76,6 +76,7 @@ function outputFiles() {
     { id: 'ordine',   label: '📋 Da Ordinare',           path: path.join(OUTPUT_DIR, 'shocapp_da_ordinare.xlsx') },
     { id: 'manten',   label: '📦 Mantenimento',          path: path.join(OUTPUT_DIR, 'shocapp_mantenimento.xlsx') },
     { id: 'esaurito', label: '🚫 Esaurito 7gg',          path: path.join(OUTPUT_DIR, 'shocapp_esaurito_7gg.xlsx') },
+    { id: 'insights', label: '📊 Insights Dashboard',    path: path.join(OUTPUT_DIR, 'insights.html') },
   ];
   return files.filter(f => fs.existsSync(f.path));
 }
@@ -147,8 +148,8 @@ async function runExtraction(chatId) {
 
     await sendMessage(chatId, msg);
 
-    // Auto-send PDF + filled Excel
-    const toSend = [result.pdfPath, result.filledPath].filter(fs.existsSync);
+    // Auto-send PDF + filled Excel + insights
+    const toSend = [result.pdfPath, result.filledPath, result.insightsPath].filter(p => p && fs.existsSync(p));
     for (const fp of toSend) await sendDocument(chatId, fp, '🍦 Ordine Fata Morgana');
 
   } catch (err) {

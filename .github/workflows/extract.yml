@@ -1,0 +1,43 @@
+name: SHOCAPP Extraction
+
+# Triggered by the mobile app via Render server → GitHub API
+on:
+  workflow_dispatch:
+    inputs:
+      sync_url:
+        description: 'Render server URL to push results to'
+        required: true
+        default: ''
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+
+      - name: Install Playwright + Chromium
+        run: npx playwright install chromium --with-deps
+
+      - name: Run extraction
+        run: node src/shocappExtractor.js
+        env:
+          GELATERIA_USER:   ${{ secrets.GELATERIA_USER }}
+          GELATERIA_PASS:   ${{ secrets.GELATERIA_PASS }}
+          JWT_SECRET:       ${{ secrets.JWT_SECRET }}
+          SYNC_URL:         ${{ inputs.sync_url }}
+          # Telegram (optional — sends PDF after extraction)
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          AUTO_SEND_TELEGRAM: 'true'

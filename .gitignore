@@ -3,3 +3,6 @@ node_modules/
 output/
 *.log
 .playwright/
+fata-app/node_modules/
+server/history.json
+.claude/

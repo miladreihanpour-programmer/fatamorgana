@@ -18,12 +18,14 @@
  */
 
 import 'dotenv/config';
+import jwt from 'jsonwebtoken';
 import { chromium } from 'playwright';
 import XLSX from 'xlsx';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { generateOrderPdf } from './generatePdf.js';
+import { generateInsights } from './generateInsights.js';
 import { sendTelegram } from './telegram.js';
 import { sendEmail } from './email.js';
 import logger from './logger.js';
@@ -542,7 +544,12 @@ export async function runExtraction() {
   let browser;
   try {
     const t0 = Date.now();
-    browser = await chromium.launch({ headless: true });
+    // Use system Chromium on Linux servers (VPS), download on Windows/Mac dev
+    const execPath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+    browser = await chromium.launch({
+      headless: true,
+      ...(execPath ? { executablePath: execPath } : {}),
+    });
     const page = await browser.newPage();
 
     await login(page);
@@ -662,7 +669,53 @@ export async function runExtraction() {
       logger.info(`  ${d.flavor.padEnd(28)} stock=${d.stock} 7d=${d.sold7d} 30d=${d.sold30d} trend=${d.trend} → ${d.order}  (${d.reason})`);
     }
 
-    return { filledPath, pdfPath, decisions, orderMap };
+    // ── Generate insights dashboard ──
+    let insightsPath, insightsHtml = null;
+    try {
+      insightsPath = await generateInsights();
+      insightsHtml = fs.readFileSync(insightsPath, 'utf8');
+      logger.info(`✓ Insights: ${insightsPath}`);
+    } catch (e) {
+      logger.warn(`Insights non generati: ${e.message}`);
+    }
+
+    // ── Push results to cloud server (if SYNC_URL is set in .env) ─────────────
+    // This makes the data available to the mobile app on any network, for free.
+    if (process.env.SYNC_URL && process.env.JWT_SECRET) {
+      try {
+        const pdfBase64 = fs.existsSync(pdfPath)
+          ? fs.readFileSync(pdfPath).toString('base64') : null;
+
+        // Build kpis
+        const kpis = {
+          totalStock:   decisions.reduce((s, d) => s + d.stock,  0),
+          totalSold7d:  decisions.reduce((s, d) => s + d.sold7d, 0),
+          totalSold30d: decisions.reduce((s, d) => s + d.sold30d,0),
+          totalOrder:   ordered.reduce((s, d) => s + d.order, 0),
+          activeCount:  decisions.filter(d => d.sold30d > 0).length,
+          outOfStock:   decisions.filter(d => d.stock === 0 && d.sold7d > 0).length,
+          needOrder:    ordered.length,
+          flavorCount:  decisions.length,
+        };
+
+        // Get a token to authenticate the sync
+        const tokenPayload = JSON.stringify({ user: process.env.GELATERIA_USER });
+        const token = jwt.sign({ user: process.env.GELATERIA_USER }, process.env.JWT_SECRET, { expiresIn: '1h' });
+
+        const syncRes = await fetch(`${process.env.SYNC_URL}/api/sync`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ kpis, data: decisions, pdfBase64, insightsHtml, decisions }),
+        });
+
+        if (syncRes.ok) logger.info(`✓ Dati sincronizzati con il server cloud (${process.env.SYNC_URL})`);
+        else logger.warn(`⚠️ Sync fallita: ${syncRes.status} ${await syncRes.text()}`);
+      } catch (e) {
+        logger.warn(`⚠️ Sync cloud fallita: ${e.message}`);
+      }
+    }
+
+    return { filledPath, pdfPath, insightsPath, decisions, orderMap };
   } catch (err) {
     if (browser) await browser.close();
     logger.error('Extraction failed:', err.message);

@@ -1,0 +1,32 @@
+{
+  "name": "fata-morgana-app",
+  "version": "1.0.0",
+  "main": "expo-router/entry",
+  "scripts": {
+    "start":   "expo start",
+    "android": "expo start --android",
+    "ios":     "expo start --ios"
+  },
+  "dependencies": {
+    "expo":                           "~56.0.8",
+    "expo-router":                    "~56.2.8",
+    "expo-secure-store":              "~56.0.4",
+    "expo-status-bar":                "~56.0.4",
+    "expo-linear-gradient":           "~56.0.4",
+    "expo-file-system":               "~56.0.7",
+    "expo-sharing":                   "~56.0.15",
+    "react":                          "19.2.3",
+    "react-native":                   "0.85.3",
+    "react-native-gifted-charts":     "^1.4.77",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens":           "4.25.2",
+    "react-native-svg":               "15.15.4",
+    "react-native-webview":           "13.16.1"
+  },
+  "devDependencies": {
+    "@babel/core":  "^7.24.0",
+    "@types/react": "~19.2.2",
+    "typescript":   "~5.3.3"
+  },
+  "private": true
+}

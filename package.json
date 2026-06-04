@@ -7,12 +7,19 @@
   "scripts": {
     "extract": "node src/shocappExtractor.js",
     "bot": "node src/telegramBot.js",
-    "pdf": "node src/generatePdf.js"
+    "pdf": "node src/generatePdf.js",
+    "insights": "node src/generateInsights.js",
+    "server": "node server/index.js",
+    "server:dev": "node --watch server/index.js"
   },
   "dependencies": {
     "cheerio": "^1.2.0",
+    "cors": "^2.8.6",
     "dotenv": "^17.3.1",
+    "express": "^4.22.2",
+    "jsonwebtoken": "^9.0.3",
     "jszip": "^3.10.1",
+    "node-cron": "^3.0.3",
     "nodemailer": "^8.0.2",
     "pdf-lib": "^1.17.1",
     "pdfkit": "^0.17.2",
