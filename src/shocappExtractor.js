@@ -698,9 +698,9 @@ export async function runExtraction() {
           flavorCount:  decisions.length,
         };
 
-        // Get a token to authenticate the sync
-        const tokenPayload = JSON.stringify({ user: process.env.GELATERIA_USER });
-        const token = jwt.sign({ user: process.env.GELATERIA_USER }, process.env.JWT_SECRET, { expiresIn: '1h' });
+        // shopId must match the shop registered on the server (set via SHOP_ID env in GitHub Actions)
+        const shopId = process.env.SHOP_ID || process.env.GELATERIA_USER;
+        const token = jwt.sign({ user: process.env.GELATERIA_USER, shopId }, process.env.JWT_SECRET, { expiresIn: '1h' });
 
         const syncRes = await fetch(`${process.env.SYNC_URL}/api/sync`, {
           method: 'POST',

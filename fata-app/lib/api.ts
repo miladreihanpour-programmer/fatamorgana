@@ -1,14 +1,22 @@
 import * as SecureStore from 'expo-secure-store';
 
-// ⚠️  Change this to your server IP when testing on a real phone
-// Your PC's local IP is 192.168.1.98
-export const API_BASE = 'http://192.168.1.91:3001';
+// Server URL — Render.com (free, always on)
+// After deploying to Render, this will be your permanent URL
+export const API_BASE = 'https://fata-morgana-api.onrender.com';
 
-const TOKEN_KEY = 'fm_token';
+const TOKEN_KEY     = 'fm_token';
+const SHOP_NAME_KEY = 'fm_shop_name';
+const SHOP_ID_KEY   = 'fm_shop_id';
 
-export const getToken   = () => SecureStore.getItemAsync(TOKEN_KEY);
-export const saveToken  = (t: string) => SecureStore.setItemAsync(TOKEN_KEY, t);
-export const clearToken = () => SecureStore.deleteItemAsync(TOKEN_KEY);
+export const getToken    = () => SecureStore.getItemAsync(TOKEN_KEY);
+export const saveToken   = (t: string) => SecureStore.setItemAsync(TOKEN_KEY, t);
+export const clearToken  = async () => {
+  await SecureStore.deleteItemAsync(TOKEN_KEY);
+  await SecureStore.deleteItemAsync(SHOP_NAME_KEY);
+  await SecureStore.deleteItemAsync(SHOP_ID_KEY);
+};
+export const getShopName = () => SecureStore.getItemAsync(SHOP_NAME_KEY);
+export const getShopId   = () => SecureStore.getItemAsync(SHOP_ID_KEY);
 
 async function authHeaders() {
   const token = await getToken();
@@ -33,8 +41,12 @@ async function req<T>(method: string, path: string, body?: object): Promise<T> {
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 export async function login(username: string, password: string) {
-  const data = await req<{ token: string; user: string }>('POST', '/auth/login', { username, password });
+  const data = await req<{ token: string; user: string; shopId: string; shopName: string }>(
+    'POST', '/auth/login', { username, password }
+  );
   await saveToken(data.token);
+  if (data.shopName) await SecureStore.setItemAsync(SHOP_NAME_KEY, data.shopName);
+  if (data.shopId)   await SecureStore.setItemAsync(SHOP_ID_KEY,   data.shopId);
   return data;
 }
 
@@ -53,6 +65,7 @@ export type InsightsResponse = {
   };
   data: FlavorData[];
   lastUpdated: string;
+  shopName?: string;
 };
 
 export type ExtractionStatus = {
@@ -66,10 +79,10 @@ export type HistoryRow = {
 };
 
 // ── API calls ─────────────────────────────────────────────────────────────────
-export const getInsights        = () => req<InsightsResponse>('GET', '/api/insights');
-export const triggerExtraction  = () => req<{ status: string }>('POST', '/api/extract', {});
-export const getExtractionStatus= () => req<ExtractionStatus>('GET', '/api/extract/status');
-export const getHistory         = () => req<HistoryRow[]>('GET', '/api/history');
+export const getInsights         = () => req<InsightsResponse>('GET', '/api/insights');
+export const triggerExtraction   = () => req<{ status: string }>('POST', '/api/extract', {});
+export const getExtractionStatus = () => req<ExtractionStatus>('GET', '/api/extract/status');
+export const getHistory          = () => req<HistoryRow[]>('GET', '/api/history');
 
 export async function getPdfUrl() {
   const token = await getToken();

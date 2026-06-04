@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BarChart } from 'react-native-gifted-charts';
-import { getInsights, type InsightsResponse } from '../../lib/api';
+import { getInsights, getShopName, type InsightsResponse } from '../../lib/api';
 import { C } from '../../lib/theme';
 
 /* ── Pill label ──────────────────────────────────────────────────────────────*/
@@ -42,6 +42,9 @@ export default function DashboardScreen() {
   const [loading,    setLoading]    = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error,      setError]      = useState<string | null>(null);
+  const [shopName,   setShopName]   = useState<string | null>(null);
+
+  useEffect(() => { getShopName().then(setShopName); }, []);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -97,7 +100,7 @@ export default function DashboardScreen() {
         {/* Header */}
         <View style={s.header}>
           <View>
-            <Text style={s.headerTitle}>Dashboard</Text>
+            <Text style={s.headerTitle}>{shopName ?? 'Dashboard'}</Text>
             <Text style={s.headerSub}>Aggiornato {updated}</Text>
           </View>
           <Pill label="● live" color={C.sageLt} />
