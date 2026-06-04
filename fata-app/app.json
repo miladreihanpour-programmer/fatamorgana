@@ -27,6 +27,12 @@
       "expo-secure-store"
     ],
     "scheme": "fatamorgana",
-    "newArchEnabled": true
+    "newArchEnabled": false,
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "43fb938c-0c51-4e1e-a462-90070cdfd91f"
+      }
+    }
   }
 }
