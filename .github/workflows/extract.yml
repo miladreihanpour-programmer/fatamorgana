@@ -4,6 +4,18 @@ name: SHOCAPP Extraction
 on:
   workflow_dispatch:
     inputs:
+      shop_id:
+        description: 'Shop identifier (e.g. shop1, shop2)'
+        required: true
+        default: 'shop1'
+      shop_user:
+        description: 'SHOCAPP username for this shop'
+        required: true
+        default: ''
+      shop_pass:
+        description: 'SHOCAPP password for this shop'
+        required: true
+        default: ''
       sync_url:
         description: 'Render server URL to push results to'
         required: true
@@ -33,10 +45,13 @@ jobs:
       - name: Run extraction
         run: node src/shocappExtractor.js
         env:
-          GELATERIA_USER:   ${{ secrets.GELATERIA_USER }}
-          GELATERIA_PASS:   ${{ secrets.GELATERIA_PASS }}
-          JWT_SECRET:       ${{ secrets.JWT_SECRET }}
+          # Shop-specific credentials (passed from Render server)
+          GELATERIA_USER:   ${{ inputs.shop_user }}
+          GELATERIA_PASS:   ${{ inputs.shop_pass }}
+          SHOP_ID:          ${{ inputs.shop_id }}
+          # Sync URL (Render server endpoint)
           SYNC_URL:         ${{ inputs.sync_url }}
+          JWT_SECRET:       ${{ secrets.JWT_SECRET }}
           # Telegram (optional — sends PDF after extraction)
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}

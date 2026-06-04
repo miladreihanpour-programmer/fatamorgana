@@ -110,6 +110,37 @@ Devi creare un token di accesso:
 
 ---
 
+## STEP 4b — Aggiungi i 6 negozi (Multi-Shop) [OPZIONALE]
+
+⚠️ Salta questo step se hai un solo negozio.
+
+Se hai **6 negozi diversi** con credenziali SHOCAPP diverse, aggiungi questo nella configurazione Render INSIEME agli altri environment variables dello STEP 4:
+
+| Key | Value |
+|-----|-------|
+| `SHOPS_CONFIG` | (vedi sotto) |
+
+Copia-incolla questo JSON nel value di `SHOPS_CONFIG`, sostituendo i nomi e le credenziali:
+
+```json
+[
+  {"id":"shop1","name":"Roma Prati",          "user":"user1","pass":"pass1"},
+  {"id":"shop2","name":"Roma Trastevere",     "user":"user2","pass":"pass2"},
+  {"id":"shop3","name":"Bologna Centro",      "user":"user3","pass":"pass3"},
+  {"id":"shop4","name":"Milano Duomo",        "user":"user4","pass":"pass4"},
+  {"id":"shop5","name":"Firenze Ponte Vecchio","user":"user5","pass":"pass5"},
+  {"id":"shop6","name":"Napoli Centro",       "user":"user6","pass":"pass6"}
+]
+```
+
+**Come funziona**:
+- Ogni negozio ha un username e password SHOCAPP diversi
+- Quando uno dipendente accede con le credenziali del Negozio 1, vede i dati del Negozio 1
+- Quando accede con le credenziali del Negozio 2, vede i dati del Negozio 2
+- Ogni estrazione ("Avvia Estrazione") usa automaticamente le credenziali del negozio dell'utente loggato
+
+---
+
 ## STEP 5 — Tieni Render sveglio (UptimeRobot, gratis)
 
 Il piano free di Render dorme dopo 15 min di inattività.
