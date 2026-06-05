@@ -188,8 +188,16 @@ async function setTablePageSize(page) {
 async function pickDropdown(page, triggerId, optionText) {
   const target = optionText.toUpperCase().trim();
 
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    const result = await page.evaluate(({ triggerId, target }) => {
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    try {
+      // Wait for page to fully settle before interacting — critical on cloud runners
+      // where SHOCAPP does JS-driven redirects after login
+      await page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => {});
+      await page.waitForTimeout(500);
+    } catch (_) {}
+    let result;
+    try {
+    result = await page.evaluate(({ triggerId, target }) => {
       // ── Strategy 1: drive underlying <select> directly ──────────────────────
       const sel = document.querySelector(`select[id="${triggerId}"]`);
       if (sel) {
@@ -244,6 +252,16 @@ async function pickDropdown(page, triggerId, optionText) {
 
       return { ok: true, via: 'visual', selected: targetOpt.textContent.trim(), available };
     }, { triggerId, target });
+    } catch (evalErr) {
+      // Page navigated mid-evaluate — wait and retry
+      if (evalErr.message && evalErr.message.includes('Execution context was destroyed')) {
+        logger.warn(`pickDropdown ${triggerId}: navigation during evaluate (attempt ${attempt}), retrying…`);
+        await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+        await page.waitForTimeout(1000);
+        continue;
+      }
+      throw evalErr;
+    }
 
     if (!result.ok) {
       logger.warn(`pickDropdown ${triggerId} -> "${optionText}": ${result.error}`);
