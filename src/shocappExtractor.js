@@ -141,6 +141,10 @@ const NAME_MAP = {
   'UVA FRAGOLA E ZENZERO':                         'UVA FRAGOLA',
   'ZUCCA COI SUOI SEMI CARAMELLATI':               'ZUCCA',
   'RICOTTA E FICHI ALLA GRECA':                    'RICOTTA E FICHI',
+  // ── Missing unmapped flavors that exist in template ──
+  'CILIEGIA':                                      'CILIEGIA',
+  'PISTACCHIO LARNAKA':                            'PISTACCHIO LARNAKA',
+  'NOCI UVETTA':                                   'NOCI UVETTA',
 };
 
 const IGNORE = new Set([
