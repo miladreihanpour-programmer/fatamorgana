@@ -771,27 +771,7 @@ export async function runExtraction() {
     const orderMap = {};
     for (const d of decisions) if (d.order > 0) orderMap[d.flavor] = d.order;
 
-    // ── Fetch manual Varie quantities from server ──
-    let varieMap = {};
-    if (process.env.SYNC_URL && process.env.JWT_SECRET) {
-      try {
-        const shopId = process.env.SHOP_ID || process.env.GELATERIA_USER;
-        const varToken = jwt.sign({ user: process.env.GELATERIA_USER, shopId }, process.env.JWT_SECRET, { expiresIn: '1h' });
-        const varRes = await fetch(`${process.env.SYNC_URL}/api/varie`, {
-          headers: { Authorization: `Bearer ${varToken}` },
-        });
-        if (varRes.ok) {
-          const raw = await varRes.json();
-          for (const [k, v] of Object.entries(raw)) if (v > 0) varieMap[norm(k)] = v;
-          const cnt = Object.keys(varieMap).length;
-          if (cnt) logger.info(`✓ Varie caricate: ${cnt} items (${Object.entries(varieMap).map(([k,v])=>`${k}=${v}`).join(', ')})`);
-        }
-      } catch (e) {
-        logger.warn(`⚠️ Varie fetch fallita: ${e.message}`);
-      }
-    }
-
-    const filledPath = fillTemplate(orderMap, varieMap);
+    const filledPath = fillTemplate(orderMap);
     const pdfPath    = await generateOrderPdf(filledPath);
 
     // ── Verify: every order in orderMap should map to a template row ──
@@ -847,8 +827,8 @@ export async function runExtraction() {
     // This makes the data available to the mobile app on any network, for free.
     if (process.env.SYNC_URL && process.env.JWT_SECRET) {
       try {
-        const pdfBase64 = fs.existsSync(pdfPath)
-          ? fs.readFileSync(pdfPath).toString('base64') : null;
+        const pdfBase64  = fs.existsSync(pdfPath)      ? fs.readFileSync(pdfPath).toString('base64')      : null;
+        const xlsxBase64 = fs.existsSync(filledPath)   ? fs.readFileSync(filledPath).toString('base64')  : null;
 
         // shopId must match the shop registered on the server (set via SHOP_ID env in GitHub Actions)
         const shopId = process.env.SHOP_ID || process.env.GELATERIA_USER;
@@ -857,7 +837,7 @@ export async function runExtraction() {
         const syncRes = await fetch(`${process.env.SYNC_URL}/api/sync`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ kpis, data: decisions, pdfBase64, insightsHtml }),
+          body: JSON.stringify({ kpis, data: decisions, pdfBase64, xlsxBase64, insightsHtml }),
         });
 
         if (syncRes.ok) logger.info(`✓ Dati sincronizzati con il server cloud (${process.env.SYNC_URL})`);

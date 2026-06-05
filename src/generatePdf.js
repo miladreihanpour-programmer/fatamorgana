@@ -48,18 +48,23 @@ function loadFlavors(filledPath) {
   const ws   = wb.Sheets['Flavors'];
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
 
-  return ['Gelato', 'Creme', 'Cioccolati', 'Sorbetti'].map((name, ci) => ({
-    name,
-    items: rows.slice(1)
-      .filter(r => {
-        const v = r[ci * 2];
-        return v && !['ORDINE', 'TOTAL:', 'Varie'].includes(String(v).trim());
-      })
-      .map(r => ({
-        flavor: String(r[ci * 2]).trim(),
-        qty:    r[ci * 2 + 1] > 0 ? Number(r[ci * 2 + 1]) : null,
-      })),
-  }));
+  return ['Gelato', 'Creme', 'Cioccolati', 'Sorbetti'].map((name, ci) => {
+    let pastVarie = false;
+    const items = [];
+    for (const r of rows.slice(1)) {
+      const v = r[ci * 2];
+      if (!v) continue;
+      const vStr = String(v).trim();
+      if (['ORDINE', 'TOTAL:'].includes(vStr)) continue;
+      if (vStr === 'Varie') { pastVarie = true; continue; }
+      items.push({
+        flavor:  vStr,
+        qty:     r[ci * 2 + 1] > 0 ? Number(r[ci * 2 + 1]) : null,
+        isVarie: pastVarie,
+      });
+    }
+    return { name, items };
+  });
 }
 
 // ── Draw helpers ──────────────────────────────────────────────────────────────
@@ -166,7 +171,7 @@ export async function generateOrderPdf(filledPath = null) {
       const x    = colX(ci);
       const item = cats[ci].items[ri];
       const qty  = item?.qty ?? null;
-      if (qty) grand += qty;
+      if (qty && !item?.isVarie) grand += qty;
 
       const flavorBg = ri % 2 === 1 ? ROW_ALT : '#ffffff';
       fillRect(doc, x, curY, FLAVOR_W, ROW_H, flavorBg);

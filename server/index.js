@@ -18,7 +18,10 @@ import cors    from 'cors';
 import jwt     from 'jsonwebtoken';
 import fs      from 'fs';
 import path    from 'path';
+import os      from 'os';
 import { fileURLToPath } from 'url';
+import XLSX from 'xlsx';
+import { generateOrderPdf } from '../src/generatePdf.js';
 
 const __dirname    = path.dirname(fileURLToPath(import.meta.url));
 const HISTORY_FILE = path.join(__dirname, 'data.json');
@@ -63,7 +66,7 @@ let shopHistory = {};      // { shopId: [ ...history rows ] }
 let extractionState = {};  // { shopId: { running, startedAt, lastResult, error } }
 
 function getStore(shopId) {
-  if (!shopData[shopId]) shopData[shopId] = { lastSync: null, kpis: null, data: [], pdfBase64: null, insightsHtml: null, decisions: [], varie: {} };
+  if (!shopData[shopId]) shopData[shopId] = { lastSync: null, kpis: null, data: [], pdfBase64: null, xlsxBase64: null, insightsHtml: null, decisions: [], varie: {} };
   return shopData[shopId];
 }
 
@@ -214,18 +217,21 @@ function buildProgress(startedAt) {
 // ── SYNC — GitHub Actions pushes results here when done ───────────────────────
 app.post('/api/sync', auth, (req, res) => {
   const { shopId } = req;
-  const { kpis, data, pdfBase64, insightsHtml } = req.body;
+  const { kpis, data, pdfBase64, xlsxBase64, insightsHtml } = req.body;
   // The extractor sends decisions as `data`; fall back so both field names work
   const decisions = req.body.decisions ?? data ?? [];
 
   if (!kpis || !data) return res.status(400).json({ error: 'Dati mancanti' });
 
-  // Store per-shop
+  const prev = shopData[shopId] ?? {};
+  // Store per-shop — preserve varie so it survives re-extraction
   shopData[shopId] = {
     lastSync: new Date().toISOString(), kpis, data,
-    pdfBase64: pdfBase64 ?? null,
+    pdfBase64:    pdfBase64  ?? null,
+    xlsxBase64:   xlsxBase64 ?? null,
     insightsHtml: insightsHtml ?? null,
     decisions,
+    varie: prev.varie ?? {},
   };
 
   const ordered = decisions.filter(d => d.order > 0);
@@ -270,9 +276,53 @@ app.get('/api/insights/html', auth, (req, res) => {
   res.send(store.insightsHtml);
 });
 
-app.get('/api/orders/pdf', auth, (req, res) => {
+app.get('/api/orders/pdf', auth, async (req, res) => {
   const store = getStore(req.shopId);
-  if (!store.pdfBase64) return res.status(404).json({ error: 'PDF non trovato' });
+  const varie = store.varie ?? {};
+  const hasVarie = Object.values(varie).some(v => v > 0);
+
+  // If Varie are set and we have the filled xlsx, regenerate PDF with Varie injected
+  if (hasVarie && store.xlsxBase64) {
+    let tmpXlsx;
+    try {
+      const norm = s => String(s).toUpperCase().replace(/['']/g, "'").replace(/\s+/g, ' ').trim();
+      const normVarie = {};
+      for (const [k, v] of Object.entries(varie)) if (v > 0) normVarie[norm(k)] = v;
+
+      const xlsxBuf = Buffer.from(store.xlsxBase64, 'base64');
+      const wb = XLSX.read(xlsxBuf, { type: 'buffer' });
+      const ws = wb.Sheets['Flavors'];
+      const ref = XLSX.utils.decode_range(ws['!ref']);
+
+      // Inject Varie quantities into column C (Creme/Varie), ORDINE column D
+      for (let R = ref.s.r; R <= ref.e.r; R++) {
+        const fc = XLSX.utils.encode_cell({ r: R, c: 2 }); // flavor name (col C)
+        const oc = XLSX.utils.encode_cell({ r: R, c: 3 }); // ordine (col D)
+        if (!ws[fc]?.v) continue;
+        const key = norm(ws[fc].v);
+        if (['ORDINE', 'TOTAL:', 'VARIE', 'CREME'].includes(key)) continue;
+        const qty = normVarie[key];
+        if (qty > 0) ws[oc] = { t: 'n', v: qty };
+      }
+
+      tmpXlsx = path.join(os.tmpdir(), `fata_${req.shopId}_${Date.now()}.xlsx`);
+      XLSX.writeFile(wb, tmpXlsx);
+
+      const pdfPath = await generateOrderPdf(tmpXlsx);
+      const buf = fs.readFileSync(pdfPath);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="ordine_${req.shopId}_${new Date().toISOString().slice(0,10)}.pdf"`);
+      return res.send(buf);
+    } catch (e) {
+      console.error('PDF regen error:', e.message);
+      // Fall through to stored PDF on error
+    } finally {
+      if (tmpXlsx) try { fs.unlinkSync(tmpXlsx); } catch {}
+    }
+  }
+
+  // Fallback: return the stored PDF from last extraction
+  if (!store.pdfBase64) return res.status(404).json({ error: 'PDF non trovato — esegui prima un\'estrazione' });
   const buf = Buffer.from(store.pdfBase64, 'base64');
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="ordine_${req.shopId}_${new Date().toISOString().slice(0,10)}.pdf"`);
