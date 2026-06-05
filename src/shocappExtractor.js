@@ -144,10 +144,16 @@ async function login(page) {
 
 // ─── Open SHOCAPP page ───────────────────────────────────────────────────────
 async function openShocapp(page) {
+  // Wait for any pending navigation to settle after login redirect
+  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
   const link = page.locator('a:has-text("SHOCAPP")').first();
-  if (await link.count()) await link.click();
-  await page.waitForSelector('table', { timeout: 15000 });
-  await page.waitForTimeout(800);
+  if (await link.count()) {
+    await link.click();
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+  }
+  await page.waitForSelector('table', { timeout: 20000 });
+  // Extra wait to ensure all JS dropdowns are fully rendered
+  await page.waitForTimeout(1500);
 }
 
 // ─── Find and set the TABLE row-per-page dropdown (not the date format one) ──
