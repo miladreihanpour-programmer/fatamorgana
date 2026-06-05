@@ -117,6 +117,17 @@ const NAME_MAP = {
   'MANDORLA BIANCA':                               'M. BIANCA',
   'MANDORLA E ARANCIA':                            'M. E ARANCIA',
   'MANDORLA TOSTATA':                              'M. TOSTATA',
+  // ── Additional unmapped flavors (corrected 2026-06-05) ──
+  'BAKLAVA':                                       'BAKLAVA',
+  'CREMA BANANA CON CROCCANTINO CIOCCOLATO & SESAMO': 'C. BANANA',
+  'DRACARYS (DRAGON FRUIT ,FRAGOLE & PEPERONCINO)': 'DRACARYS',
+  'LATTE DI FICO (PAMPANELLA)':                    'PAMPANELLA',
+  'FRAGOLE DI TERRACINA & CHAMPAGNE':              'FRAGOLE CHAMP',
+  'FASHIONED SPRITZ':                              'SPRITZ',
+  'NOCI  E UVETTA DI CORINTO':                     'NOCI UVETTA',
+  'NOCI E UVETTA DI CORINTO':                      'NOCI UVETTA',
+  'SACRIPANTE NEW':                                'SACRIPANTE',
+  'FIORDILATTE NEW':                               'FIORDILATTE',
 };
 
 const IGNORE = new Set([
