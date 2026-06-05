@@ -156,27 +156,31 @@ async function openShocapp(page) {
   await page.waitForTimeout(1500);
 }
 
-// ─── Find and set the TABLE row-per-page dropdown (not the date format one) ──
+// ─── Find and set the TABLE row-per-page dropdown to the MAXIMUM available ───
 // Multiple <select> elements exist on the page. We want the one INSIDE the
-// table area whose options are 10/25/50/100 etc.
+// table area whose options are 10/25/50/100/500 etc.
+// We always pick the LARGEST numeric option to ensure all rows are visible on
+// one page and we never miss items due to pagination.
 async function setTablePageSize(page) {
   const result = await page.evaluate(() => {
     const selects = Array.from(document.querySelectorAll('select'));
     for (const sel of selects) {
       const opts = Array.from(sel.options).map(o => o.value);
       // The table page-size dropdown has numeric options like 10, 25, 50, 100
-      const numericOpts = opts.map(o => parseInt(o)).filter(n => !isNaN(n));
-      if (numericOpts.length >= 2 && numericOpts.includes(100)) {
-        sel.value = '100';
+      const numericOpts = opts.map(o => parseInt(o)).filter(n => !isNaN(n) && n > 0);
+      if (numericOpts.length >= 2 && numericOpts.some(n => n >= 50)) {
+        // Use the LARGEST available option to show all rows at once
+        const maxOpt = Math.max(...numericOpts).toString();
+        sel.value = maxOpt;
         sel.dispatchEvent(new Event('change', { bubbles: true }));
-        return { found: true, opts, set: 100 };
+        return { found: true, opts, set: parseInt(maxOpt) };
       }
     }
     return { found: false };
   });
   if (result.found) logger.info(`  page-size set to ${result.set} (options: ${result.opts.join(',')})`);
   else logger.warn('  table page-size dropdown not found');
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(1200);
 }
 
 // ─── Set a multi-select dropdown to ONE option (uncheck all others first) ───
@@ -380,7 +384,10 @@ async function readTable(page, label) {
       const qty    = parseInt((cells[vasIdx >= 0 ? vasIdx : 4] || '').replace(/[^0-9]/g, ''));
       if (!flavor || flavor.length < 2) continue;
       if (flavor.toLowerCase().includes('peso')) continue;
-      if (!isNaN(qty) && qty > 0) out.push({ flavor, stato, qty });
+      // Include ALL items even with qty=0 — depleted items still have sales
+      // history and need to appear in the order calculation.
+      // Only skip rows where qty is completely unparseable (header/footer rows).
+      out.push({ flavor, stato, qty: isNaN(qty) ? 0 : qty });
     }
     return out;
   });
