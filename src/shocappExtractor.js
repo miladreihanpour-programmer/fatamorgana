@@ -590,6 +590,15 @@ export async function runExtraction() {
     if (!await pickDropdown(page, 'SelTabella', 'Sintesi'))
       throw new Error('Impossibile impostare modalità Sintesi');
 
+    // Helper: enforce Sintesi mode + set max page size before each read.
+    // clickCerca() reloads the table and resets SelTabella to Dettaglio each time,
+    // so we must re-set it before every readTable call.
+    async function ensureSintesi() {
+      if (!await pickDropdown(page, 'SelTabella', 'Sintesi'))
+        logger.warn('  ⚠️ SelTabella Sintesi non riuscito — conteggi potrebbero essere errati');
+      await setTablePageSize(page);
+    }
+
     // ── 1. Filter to Mantenimento + Tutto il periodo ──
     logger.info('▸ Mantenimento, tutto il periodo (Sintesi)');
     if (!await pickDropdown(page, 'SelStatus', 'Mantenimento'))
@@ -597,7 +606,7 @@ export async function runExtraction() {
     if (!await pickDropdown(page, 'SelData', 'Tutto il periodo'))
       throw new Error('Filtro Data=Tutto il periodo fallito');
     await clickCerca(page);
-    await setTablePageSize(page);
+    await ensureSintesi();
     const stockRows = await readTable(page, 'Mantenimento');
     logger.info(`  ${stockRows.length} righe`);
     let prevSummary = await getPesoSummary(page);
@@ -610,7 +619,7 @@ export async function runExtraction() {
     if (!await pickDropdown(page, 'SelData', 'Ultimi 7 giorni'))
       throw new Error('Filtro Data=Ultimi 7 giorni fallito');
     await clickCerca(page, prevSummary);
-    await setTablePageSize(page);
+    await ensureSintesi();
     const sold7dRows = await readTable(page, 'Esaurito_7gg');
     logger.info(`  ${sold7dRows.length} righe`);
     prevSummary = await getPesoSummary(page);
@@ -621,7 +630,7 @@ export async function runExtraction() {
     if (!await pickDropdown(page, 'SelData', 'Ultimi 30 giorni'))
       throw new Error('Filtro Data=Ultimi 30 giorni fallito');
     await clickCerca(page, prevSummary);
-    await setTablePageSize(page);
+    await ensureSintesi();
     const sold30dRows = await readTable(page, 'Esaurito_30gg');
     logger.info(`  ${sold30dRows.length} righe`);
     prevSummary = await getPesoSummary(page);
@@ -631,7 +640,7 @@ export async function runExtraction() {
     if (!await pickDropdown(page, 'SelData', 'Tutto il periodo'))
       throw new Error('Filtro Data=Tutto il periodo (storico) fallito');
     await clickCerca(page, prevSummary);
-    await setTablePageSize(page);
+    await ensureSintesi();
     const histRows = await readTable(page, 'Esaurito_storico');
     logger.info(`  ${histRows.length} righe`);
 
