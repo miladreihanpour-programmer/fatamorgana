@@ -34,19 +34,23 @@ function readSheet(filePath, sheetIndex = 0) {
 }
 
 function loadCategoryMap() {
-  const wb   = XLSX.readFile(TEMPLATE_PATH);
-  const ws   = wb.Sheets['Flavors'];
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
-  const cats = ['Gelato', 'Creme', 'Cioccolati', 'Sorbetti'];
-  const map  = {};
-  for (const row of rows.slice(1)) {
-    for (let ci = 0; ci < 4; ci++) {
-      const v = row[ci * 2];
-      if (v && !['ORDINE', 'TOTAL:', 'Varie'].includes(String(v).trim()))
-        map[String(v).trim().toUpperCase()] = cats[ci];
+  try {
+    if (!fs.existsSync(TEMPLATE_PATH)) return {};
+    const wb   = XLSX.readFile(TEMPLATE_PATH);
+    const ws   = wb.Sheets['Flavors'];
+    if (!ws) return {};
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+    const cats = ['Gelato', 'Creme', 'Cioccolati', 'Sorbetti'];
+    const map  = {};
+    for (const row of rows.slice(1)) {
+      for (let ci = 0; ci < 4; ci++) {
+        const v = row[ci * 2];
+        if (v && !['ORDINE', 'TOTAL:', 'Varie'].includes(String(v).trim()))
+          map[String(v).trim().toUpperCase()] = cats[ci];
+      }
     }
-  }
-  return map;
+    return map;
+  } catch { return {}; }
 }
 
 function j(v) { return JSON.stringify(v); }
@@ -150,7 +154,13 @@ export async function generateInsights() {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Fata Morgana — Insights ${today}</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+<script>
+/* Fallback CDN if jsDelivr is blocked (e.g. in WebView offline env) */
+if (typeof Chart === 'undefined') {
+  document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.3/chart.umd.min.js" crossorigin="anonymous"><\/script>');
+}
+</script>
 <style>
   :root {
     --navy:#1a1a2e; --gold:#f5c518; --blue:#4e8ef7;
@@ -226,7 +236,7 @@ export async function generateInsights() {
 
 <div class="header">
   <div>
-    <div class="header h1">🍦 Fata Morgana — Dashboard Insights</div>
+    <h1>🍦 Fata Morgana — Dashboard Insights</h1>
     <div class="sub">Generato il ${today}</div>
   </div>
   <div class="badge">${data.length} gusti monitorati</div>
@@ -421,6 +431,11 @@ ${[...data].sort((a,b) => b.order - a.order || b.sold7d - a.sold7d).map(d => `
 </div><!-- /page -->
 
 <script>
+// ── Chart.js guard ───────────────────────────────────────────────────────────
+if (typeof Chart === 'undefined') {
+  document.body.insertAdjacentHTML('afterbegin',
+    '<div style="color:#e74c3c;padding:12px 20px;background:#fff3f3;border-bottom:1px solid #fcc">⚠️ Chart.js non caricato — grafici non disponibili. Verifica la connessione internet.</div>');
+} else {
 // ── Chart.js defaults ────────────────────────────────────────────────────────
 Chart.defaults.font.family = "'Segoe UI', system-ui, sans-serif";
 Chart.defaults.font.size   = 11;
@@ -568,6 +583,7 @@ donut('catPie',
   ${j(catColors)}
 );
 
+} // end Chart guard
 </script>
 </body>
 </html>`;

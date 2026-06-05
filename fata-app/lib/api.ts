@@ -91,5 +91,20 @@ export async function getPdfUrl() {
 
 export async function getInsightsHtmlUrl() {
   const token = await getToken();
-  return `${API_BASE}/api/insights/html?token=${token}`;
+  if (!token) throw new Error('Non autenticato');
+  return `${API_BASE}/api/insights/html?token=${encodeURIComponent(token)}`;
+}
+
+/** Fetch the insights HTML as a string so the WebView can render it via
+ *  source={{ html }} — this avoids CDN/mixed-content/CORS blocking in
+ *  React Native WebView, which can silently prevent Chart.js from loading
+ *  when loaded via a remote URI. */
+export async function getInsightsHtml(): Promise<string> {
+  const token = await getToken();
+  if (!token) throw new Error('Non autenticato');
+  const res = await fetch(`${API_BASE}/api/insights/html`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Errore server: ${res.status}`);
+  return res.text();
 }

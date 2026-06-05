@@ -374,6 +374,9 @@ async function readTable(page, label) {
     const gustoIdx = headers.findIndex(h => h.includes('GUSTO'));
     const statoIdx = headers.findIndex(h => h.includes('STATO'));
     const vasIdx   = headers.findIndex(h => h.includes('VASCHE'));
+    // Return column metadata for caller to log
+    const _vasIdxUsed = vasIdx >= 0 ? vasIdx : 4;
+    const _vasIdxFallback = vasIdx < 0;
 
     const out = [];
     for (const tr of best.querySelectorAll('tbody tr')) {
@@ -381,7 +384,7 @@ async function readTable(page, label) {
       if (cells.length < 3) continue;
       const flavor = gustoIdx >= 0 ? cells[gustoIdx] : cells[1];
       const stato  = statoIdx >= 0 ? cells[statoIdx] : '';
-      const qty    = parseInt((cells[vasIdx >= 0 ? vasIdx : 4] || '').replace(/[^0-9]/g, ''));
+      const qty    = parseInt((cells[_vasIdxUsed] || '').replace(/[^0-9]/g, ''));
       if (!flavor || flavor.length < 2) continue;
       if (flavor.toLowerCase().includes('peso')) continue;
       // Include ALL items even with qty=0 — depleted items still have sales
@@ -389,7 +392,8 @@ async function readTable(page, label) {
       // Only skip rows where qty is completely unparseable (header/footer rows).
       out.push({ flavor, stato, qty: isNaN(qty) ? 0 : qty });
     }
-    return out;
+    // Attach metadata as non-enumerable so callers can inspect it
+    return { rows: out, vasIdxFallback: _vasIdxFallback, vasIdxUsed: _vasIdxUsed, headers };
   });
 }
 
@@ -607,8 +611,13 @@ export async function runExtraction() {
       throw new Error('Filtro Data=Tutto il periodo fallito');
     await clickCerca(page);
     await ensureSintesi();
-    const stockRows = await readTable(page, 'Mantenimento');
-    logger.info(`  ${stockRows.length} righe`);
+    const _stockResult = await readTable(page, 'Mantenimento');
+    if (_stockResult.vasIdxFallback)
+      logger.warn(`  ⚠️ VASCHE header not found in Mantenimento table (headers: ${_stockResult.headers.join('|')}); using fallback column ${_stockResult.vasIdxUsed}`);
+    const stockRows = _stockResult.rows;
+    logger.info(`  ${stockRows.length} righe, totalQty=${stockRows.reduce((s,r)=>s+r.qty,0)}`);
+    // Log unique stato values seen so we can verify filter is working
+    logger.info(`  Stato valori: ${[...new Set(stockRows.map(r=>r.stato))].join(', ')}`);
     let prevSummary = await getPesoSummary(page);
     logger.info(`  Peso summary: ${prevSummary.slice(0,70)}`);
 
@@ -620,8 +629,12 @@ export async function runExtraction() {
       throw new Error('Filtro Data=Ultimi 7 giorni fallito');
     await clickCerca(page, prevSummary);
     await ensureSintesi();
-    const sold7dRows = await readTable(page, 'Esaurito_7gg');
-    logger.info(`  ${sold7dRows.length} righe`);
+    const _sold7dResult = await readTable(page, 'Esaurito_7gg');
+    if (_sold7dResult.vasIdxFallback)
+      logger.warn(`  ⚠️ VASCHE header not found in Esaurito_7gg table; using fallback column ${_sold7dResult.vasIdxUsed}`);
+    const sold7dRows = _sold7dResult.rows;
+    logger.info(`  ${sold7dRows.length} righe, totalQty=${sold7dRows.reduce((s,r)=>s+r.qty,0)}`);
+    logger.info(`  Stato valori: ${[...new Set(sold7dRows.map(r=>r.stato))].join(', ')}`);
     prevSummary = await getPesoSummary(page);
     logger.info(`  Peso summary: ${prevSummary.slice(0,70)}`);
 
@@ -631,8 +644,12 @@ export async function runExtraction() {
       throw new Error('Filtro Data=Ultimi 30 giorni fallito');
     await clickCerca(page, prevSummary);
     await ensureSintesi();
-    const sold30dRows = await readTable(page, 'Esaurito_30gg');
-    logger.info(`  ${sold30dRows.length} righe`);
+    const _sold30dResult = await readTable(page, 'Esaurito_30gg');
+    if (_sold30dResult.vasIdxFallback)
+      logger.warn(`  ⚠️ VASCHE header not found in Esaurito_30gg table; using fallback column ${_sold30dResult.vasIdxUsed}`);
+    const sold30dRows = _sold30dResult.rows;
+    logger.info(`  ${sold30dRows.length} righe, totalQty=${sold30dRows.reduce((s,r)=>s+r.qty,0)}`);
+    logger.info(`  Stato valori: ${[...new Set(sold30dRows.map(r=>r.stato))].join(', ')}`);
     prevSummary = await getPesoSummary(page);
 
     // ── 4. Esaurito + Tutto il periodo ──
@@ -641,8 +658,12 @@ export async function runExtraction() {
       throw new Error('Filtro Data=Tutto il periodo (storico) fallito');
     await clickCerca(page, prevSummary);
     await ensureSintesi();
-    const histRows = await readTable(page, 'Esaurito_storico');
-    logger.info(`  ${histRows.length} righe`);
+    const _histResult = await readTable(page, 'Esaurito_storico');
+    if (_histResult.vasIdxFallback)
+      logger.warn(`  ⚠️ VASCHE header not found in Esaurito_storico table; using fallback column ${_histResult.vasIdxUsed}`);
+    const histRows = _histResult.rows;
+    logger.info(`  ${histRows.length} righe, totalQty=${histRows.reduce((s,r)=>s+r.qty,0)}`);
+    logger.info(`  Stato valori: ${[...new Set(histRows.map(r=>r.stato))].join(', ')}`);
 
     await browser.close(); browser = null;
 
@@ -659,6 +680,9 @@ export async function runExtraction() {
     }
 
     // ── Aggregate raw counts (before name mapping) ──
+    // Note: in Sintesi mode the server-side filter (SelStatus) already restricts
+    // rows to the selected stato, so filterByStato() is not needed. However we
+    // log the stato distribution above so any leakage is visible in the logs.
     const stockAgg   = aggregate(stockRows);
     const sold7dAgg  = aggregate(sold7dRows);
     const sold30dAgg = aggregate(sold30dRows);
@@ -745,7 +769,7 @@ export async function runExtraction() {
         const syncRes = await fetch(`${process.env.SYNC_URL}/api/sync`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ kpis, data: decisions, pdfBase64, insightsHtml, decisions }),
+          body: JSON.stringify({ kpis, data: decisions, pdfBase64, insightsHtml }),
         });
 
         if (syncRes.ok) logger.info(`✓ Dati sincronizzati con il server cloud (${process.env.SYNC_URL})`);

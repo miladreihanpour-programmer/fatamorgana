@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react';
 import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
 import { WebView } from 'react-native-webview';
-import { getInsightsHtmlUrl } from '../../lib/api';
+import { getInsightsHtml } from '../../lib/api';
 
 export default function InsightsScreen() {
-  const [url,     setUrl]     = useState<string | null>(null);
+  const [html,       setHtml]       = useState<string | null>(null);
   const [webLoading, setWebLoading] = useState(true);
-  const [error,   setError]   = useState<string | null>(null);
+  const [error,      setError]      = useState<string | null>(null);
 
   useEffect(() => {
-    getInsightsHtmlUrl().then(setUrl).catch(e => setError(e.message));
+    getInsightsHtml()
+      .then(setHtml)
+      .catch(e => setError(e.message));
   }, []);
 
   if (error) return (
@@ -18,7 +20,7 @@ export default function InsightsScreen() {
     </View>
   );
 
-  if (!url) return (
+  if (!html) return (
     <View style={s.center}>
       <ActivityIndicator size="large" color="#1a1a2e" />
     </View>
@@ -33,12 +35,20 @@ export default function InsightsScreen() {
         </View>
       )}
       <WebView
-        source={{ uri: url }}
+        // Render HTML string directly — avoids CDN/CORS blocking in WebView
+        // that would prevent Chart.js from loading when loaded via a remote URI.
+        source={{ html, baseUrl: '' }}
         style={{ flex: 1 }}
         onLoadEnd={() => setWebLoading(false)}
-        onError={() => setError('Impossibile caricare gli insights.\nVerifica che il server sia acceso.')}
+        onError={() => setError('Impossibile renderizzare gli insights.')}
+        onHttpError={(e) => {
+          if (e.nativeEvent.statusCode >= 400)
+            setError(`Errore server: ${e.nativeEvent.statusCode}`);
+        }}
         javaScriptEnabled
         domStorageEnabled
+        originWhitelist={['*']}
+        mixedContentMode="always"
       />
     </View>
   );
