@@ -145,6 +145,7 @@ const NAME_MAP = {
   'CILIEGIA':                                      'CILIEGIA',
   'PISTACCHIO LARNAKA':                            'PISTACCHIO LARNAKA',
   'NOCI UVETTA':                                   'NOCI UVETTA',
+  'NOCI PECAN':                                    'NOCI PECAN',
   // ── Discontinued — track stock but never order ──
   'PISTACCHIO SIRIANO':                            'PISTACCHIO SIRIANO',
   // ── Reactivated flavors (removed from IGNORE) ──
