@@ -770,7 +770,8 @@ export async function runExtraction() {
     // Note: totalStock sums from raw stock map (all flavors), not just decisions
     // because decisions excludes zero-stock flavors, but we still want to count
     // any stock from flavors with no recent sales
-    const totalStockVal = Object.values(stock).reduce((s, d) => s + d.qty, 0);
+    // aggregateAndMap() returns m[flavor] = qty (number), so we sum the raw values
+    const totalStockVal = Object.values(stock).reduce((s, qty) => s + qty, 0);
     const kpis = {
       totalStock:   totalStockVal,
       totalSold7d:  decisions.reduce((s, d) => s + d.sold7d, 0),
