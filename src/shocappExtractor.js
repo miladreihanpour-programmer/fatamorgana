@@ -766,10 +766,26 @@ export async function runExtraction() {
       logger.info(`  ${d.flavor.padEnd(28)} stock=${d.stock} 7d=${d.sold7d} 30d=${d.sold30d} trend=${d.trend} → ${d.order}  (${d.reason})`);
     }
 
+    // ── Build kpis (before generating insights so we can pass them along) ──────
+    // Note: totalStock sums from raw stock map (all flavors), not just decisions
+    // because decisions excludes zero-stock flavors, but we still want to count
+    // any stock from flavors with no recent sales
+    const totalStockVal = Object.values(stock).reduce((s, d) => s + d.qty, 0);
+    const kpis = {
+      totalStock:   totalStockVal,
+      totalSold7d:  decisions.reduce((s, d) => s + d.sold7d, 0),
+      totalSold30d: decisions.reduce((s, d) => s + d.sold30d,0),
+      totalOrder:   ordered.reduce((s, d) => s + d.order, 0),
+      activeCount:  decisions.filter(d => d.sold30d > 0).length,
+      outOfStock:   decisions.filter(d => d.stock === 0 && d.sold7d > 0).length,
+      needOrder:    ordered.length,
+      flavorCount:  decisions.length,
+    };
+
     // ── Generate insights dashboard ──
     let insightsPath, insightsHtml = null;
     try {
-      insightsPath = await generateInsights();
+      insightsPath = await generateInsights(kpis);  // Pass kpis so HTML shows correct totals
       insightsHtml = fs.readFileSync(insightsPath, 'utf8');
       logger.info(`✓ Insights: ${insightsPath}`);
     } catch (e) {
@@ -782,18 +798,6 @@ export async function runExtraction() {
       try {
         const pdfBase64 = fs.existsSync(pdfPath)
           ? fs.readFileSync(pdfPath).toString('base64') : null;
-
-        // Build kpis
-        const kpis = {
-          totalStock:   decisions.reduce((s, d) => s + d.stock,  0),
-          totalSold7d:  decisions.reduce((s, d) => s + d.sold7d, 0),
-          totalSold30d: decisions.reduce((s, d) => s + d.sold30d,0),
-          totalOrder:   ordered.reduce((s, d) => s + d.order, 0),
-          activeCount:  decisions.filter(d => d.sold30d > 0).length,
-          outOfStock:   decisions.filter(d => d.stock === 0 && d.sold7d > 0).length,
-          needOrder:    ordered.length,
-          flavorCount:  decisions.length,
-        };
 
         // shopId must match the shop registered on the server (set via SHOP_ID env in GitHub Actions)
         const shopId = process.env.SHOP_ID || process.env.GELATERIA_USER;

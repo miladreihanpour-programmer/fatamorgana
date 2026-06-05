@@ -56,7 +56,7 @@ function loadCategoryMap() {
 function j(v) { return JSON.stringify(v); }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
-export async function generateInsights() {
+export async function generateInsights(overrideKpis = null) {
   if (!fs.existsSync(DECISIONS_PATH))
     throw new Error('Nessun dato trovato — esegui prima una estrazione.');
 
@@ -81,13 +81,28 @@ export async function generateInsights() {
   data.forEach(d => { d.category = catMap[d.flavor.toUpperCase()] ?? 'Altro'; });
 
   // ── KPIs ────────────────────────────────────────────────────────────────────
-  const totalStock   = data.reduce((s, d) => s + d.stock,  0);
-  const totalSold7d  = data.reduce((s, d) => s + d.sold7d, 0);
-  const totalSold30d = data.reduce((s, d) => s + d.sold30d,0);
-  const totalOrder   = data.reduce((s, d) => s + d.order,  0);
-  const activeCount  = data.filter(d => d.sold30d > 0).length;
-  const outOfStock   = data.filter(d => d.stock === 0 && d.sold7d > 0).length;
-  const needOrder    = data.filter(d => d.order  > 0).length;
+  // If overrideKpis provided, use those (they include all flavors, not just decisions).
+  // Otherwise, calculate from decisions (for backward compatibility when called standalone).
+  let totalStock, totalSold7d, totalSold30d, totalOrder, activeCount, outOfStock, needOrder;
+
+  if (overrideKpis) {
+    totalStock   = overrideKpis.totalStock;
+    totalSold7d  = overrideKpis.totalSold7d;
+    totalSold30d = overrideKpis.totalSold30d;
+    totalOrder   = overrideKpis.totalOrder;
+    activeCount  = overrideKpis.activeCount;
+    outOfStock   = overrideKpis.outOfStock;
+    needOrder    = overrideKpis.needOrder;
+  } else {
+    totalStock   = data.reduce((s, d) => s + d.stock,  0);
+    totalSold7d  = data.reduce((s, d) => s + d.sold7d, 0);
+    totalSold30d = data.reduce((s, d) => s + d.sold30d,0);
+    totalOrder   = data.reduce((s, d) => s + d.order,  0);
+    activeCount  = data.filter(d => d.sold30d > 0).length;
+    outOfStock   = data.filter(d => d.stock === 0 && d.sold7d > 0).length;
+    needOrder    = data.filter(d => d.order  > 0).length;
+  }
+
   const turnover     = totalStock > 0 ? ((totalSold30d / totalStock) * 10 / 3).toFixed(1) : '—'; // weekly turns
 
   // ── Chart datasets ──────────────────────────────────────────────────────────
