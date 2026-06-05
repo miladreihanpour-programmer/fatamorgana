@@ -28,6 +28,12 @@
     ],
     "scheme": "fatamorgana",
     "newArchEnabled": false,
+    "updates": {
+      "url": "https://u.expo.dev/43fb938c-0c51-4e1e-a462-90070cdfd91f"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "extra": {
       "router": {},
       "eas": {
