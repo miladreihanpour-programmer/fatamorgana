@@ -83,6 +83,9 @@ export const getInsights         = () => req<InsightsResponse>('GET', '/api/insi
 export const triggerExtraction   = () => req<{ status: string }>('POST', '/api/extract', {});
 export const getExtractionStatus = () => req<ExtractionStatus>('GET', '/api/extract/status');
 export const getHistory          = () => req<HistoryRow[]>('GET', '/api/history');
+export const getVarie            = () => req<Record<string, number>>('GET', '/api/varie');
+export const saveVarie           = (quantities: Record<string, number>) =>
+  req<{ ok: boolean }>('POST', '/api/varie', { quantities });
 
 export async function getPdfUrl() {
   const token = await getToken();

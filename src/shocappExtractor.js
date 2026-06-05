@@ -587,7 +587,7 @@ function decideOrders({ stock, sold7d, sold30d, hist }) {
 }
 
 // ─── Excel + PDF ────────────────────────────────────────────────────────────
-export function fillTemplate(orderMap) {
+export function fillTemplate(orderMap, varieMap = {}) {
   const wb = XLSX.readFile(TEMPLATE_PATH);
   const ws = wb.Sheets['Flavors'];
   const ref = XLSX.utils.decode_range(ws['!ref']);
@@ -598,7 +598,7 @@ export function fillTemplate(orderMap) {
       if (!ws[fc]?.v) continue;
       const key = norm(ws[fc].v);
       if (['ORDINE', 'TOTAL:', 'VARIE'].includes(key)) continue;
-      const qty = orderMap[key];
+      const qty = orderMap[key] ?? varieMap[key];
       ws[oc] = qty > 0 ? { t: 'n', v: qty } : { t: 's', v: '' };
     }
   }
@@ -771,7 +771,27 @@ export async function runExtraction() {
     const orderMap = {};
     for (const d of decisions) if (d.order > 0) orderMap[d.flavor] = d.order;
 
-    const filledPath = fillTemplate(orderMap);
+    // ── Fetch manual Varie quantities from server ──
+    let varieMap = {};
+    if (process.env.SYNC_URL && process.env.JWT_SECRET) {
+      try {
+        const shopId = process.env.SHOP_ID || process.env.GELATERIA_USER;
+        const varToken = jwt.sign({ user: process.env.GELATERIA_USER, shopId }, process.env.JWT_SECRET, { expiresIn: '1h' });
+        const varRes = await fetch(`${process.env.SYNC_URL}/api/varie`, {
+          headers: { Authorization: `Bearer ${varToken}` },
+        });
+        if (varRes.ok) {
+          const raw = await varRes.json();
+          for (const [k, v] of Object.entries(raw)) if (v > 0) varieMap[norm(k)] = v;
+          const cnt = Object.keys(varieMap).length;
+          if (cnt) logger.info(`✓ Varie caricate: ${cnt} items (${Object.entries(varieMap).map(([k,v])=>`${k}=${v}`).join(', ')})`);
+        }
+      } catch (e) {
+        logger.warn(`⚠️ Varie fetch fallita: ${e.message}`);
+      }
+    }
+
+    const filledPath = fillTemplate(orderMap, varieMap);
     const pdfPath    = await generateOrderPdf(filledPath);
 
     // ── Verify: every order in orderMap should map to a template row ──

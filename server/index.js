@@ -63,7 +63,7 @@ let shopHistory = {};      // { shopId: [ ...history rows ] }
 let extractionState = {};  // { shopId: { running, startedAt, lastResult, error } }
 
 function getStore(shopId) {
-  if (!shopData[shopId]) shopData[shopId] = { lastSync: null, kpis: null, data: [], pdfBase64: null, insightsHtml: null, decisions: [] };
+  if (!shopData[shopId]) shopData[shopId] = { lastSync: null, kpis: null, data: [], pdfBase64: null, insightsHtml: null, decisions: [], varie: {} };
   return shopData[shopId];
 }
 
@@ -281,6 +281,22 @@ app.get('/api/orders/pdf', auth, (req, res) => {
 
 app.get('/api/history', auth, (req, res) => {
   res.json(getHistory(req.shopId).slice(0, 30));
+});
+
+// ── Varie — manual order quantities for non-SHOCAPP items ────────────────────
+app.get('/api/varie', auth, (req, res) => {
+  res.json(getStore(req.shopId).varie ?? {});
+});
+
+app.post('/api/varie', auth, (req, res) => {
+  const { quantities } = req.body ?? {};
+  if (!quantities || typeof quantities !== 'object' || Array.isArray(quantities))
+    return res.status(400).json({ error: 'quantities object richiesto' });
+  const store = getStore(req.shopId);
+  store.varie = quantities;
+  saveAll();
+  console.log(`📝 Varie aggiornate: ${req.shopId} — ${Object.entries(quantities).filter(([,v]) => v > 0).length} items`);
+  res.json({ ok: true });
 });
 
 // ── List shops (for admin — no auth needed, shows only names not credentials) ──

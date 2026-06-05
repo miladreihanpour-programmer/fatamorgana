@@ -6,20 +6,34 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import { triggerExtraction, getExtractionStatus, getPdfUrl, type ExtractionStatus } from '../../lib/api';
+import { triggerExtraction, getExtractionStatus, getPdfUrl, getVarie, saveVarie, type ExtractionStatus } from '../../lib/api';
 import { C } from '../../lib/theme';
+
+const VARIE_ITEMS = [
+  'CAPRESE', 'CHICCHIAINI', 'CIOCCOLATA CALDA', 'COPPETTA GRANDE', 'COPPETTA PICCOLA',
+  'MOUSSE', 'SUSHI GELATO', 'TORTA AGNESE 6P', 'TORTA AGNESE 8P',
+  'TORTA CHEESCAKE 6P', 'TORTA CHEESCAKE 8P',
+  'TORTA LAURA 6P', 'TORTA LAURA 8P',
+  'TORTA TIRAMISU 6P', 'TORTA TIRAMISU 8P',
+];
 
 export default function OrdersScreen() {
   const [status,      setStatus]      = useState<ExtractionStatus | null>(null);
   const [starting,    setStarting]    = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [varie,       setVarie]       = useState<Record<string, number>>({});
+  const [varieSaving, setVarieSaving] = useState(false);
+  const [varieSaved,  setVarieSaved]  = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   async function fetchStatus() {
     try { setStatus(await getExtractionStatus()); } catch {}
   }
 
-  useEffect(() => { fetchStatus(); }, []);
+  useEffect(() => {
+    fetchStatus();
+    getVarie().then(q => setVarie(q)).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (status?.running) {
@@ -35,6 +49,24 @@ export default function OrdersScreen() {
     try { await triggerExtraction(); await fetchStatus(); }
     catch (e: any) { Alert.alert('Errore', e.message); }
     finally { setStarting(false); }
+  }
+
+  function stepVarie(item: string, delta: number) {
+    setVarie(prev => ({ ...prev, [item]: Math.max(0, (prev[item] ?? 0) + delta) }));
+    setVarieSaved(false);
+  }
+
+  async function handleSaveVarie() {
+    setVarieSaving(true);
+    try {
+      await saveVarie(varie);
+      setVarieSaved(true);
+      setTimeout(() => setVarieSaved(false), 2500);
+    } catch (e: any) {
+      Alert.alert('Errore', e.message);
+    } finally {
+      setVarieSaving(false);
+    }
   }
 
   async function handleDownload() {
@@ -160,6 +192,41 @@ export default function OrdersScreen() {
             }
           </TouchableOpacity>
 
+          {/* Varie — manual quantities */}
+          <View style={s.varieCard}>
+            <Text style={s.varieTitle}>Varie</Text>
+            <Text style={s.varieSub}>
+              Le quantità salvate verranno incluse nel PDF alla prossima estrazione.
+            </Text>
+
+            {VARIE_ITEMS.map(item => (
+              <View key={item} style={s.varieRow}>
+                <Text style={s.varieName}>{item}</Text>
+                <View style={s.stepper}>
+                  <TouchableOpacity onPress={() => stepVarie(item, -1)} style={s.stepBtn} activeOpacity={0.7}>
+                    <Text style={s.stepTxt}>−</Text>
+                  </TouchableOpacity>
+                  <Text style={s.stepVal}>{varie[item] ?? 0}</Text>
+                  <TouchableOpacity onPress={() => stepVarie(item, +1)} style={s.stepBtn} activeOpacity={0.7}>
+                    <Text style={s.stepTxt}>+</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+
+            <TouchableOpacity
+              onPress={handleSaveVarie}
+              disabled={varieSaving}
+              activeOpacity={0.8}
+              style={[s.saveBtn, varieSaved && { backgroundColor: C.sage }]}
+            >
+              {varieSaving
+                ? <ActivityIndicator color="#fff" size="small" />
+                : <Text style={s.saveTxt}>{varieSaved ? '✓ Salvato' : 'Salva Varie'}</Text>
+              }
+            </TouchableOpacity>
+          </View>
+
         </View>
       </ScrollView>
     </View>
@@ -214,4 +281,33 @@ const s = StyleSheet.create({
   },
   pdfTitle: { color: C.text, fontWeight: '600', fontSize: 14 },
   pdfSub:   { color: C.muted, fontSize: 11, marginTop: 2 },
+
+  varieCard: {
+    backgroundColor: C.s2, borderRadius: 14, padding: 16, marginTop: 12,
+    borderWidth: 1, borderColor: C.glassBdr,
+  },
+  varieTitle: { color: C.text, fontWeight: '700', fontSize: 16, marginBottom: 4 },
+  varieSub:   { color: C.muted, fontSize: 11, marginBottom: 14, lineHeight: 16 },
+  varieRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: C.glassBdr,
+  },
+  varieName: { color: C.textSub, fontSize: 13, flex: 1 },
+
+  stepper:  { flexDirection: 'row', alignItems: 'center', gap: 0 },
+  stepBtn:  {
+    width: 32, height: 32, borderRadius: 8,
+    backgroundColor: C.s3, alignItems: 'center', justifyContent: 'center',
+  },
+  stepTxt:  { color: C.amber, fontSize: 18, fontWeight: '700', lineHeight: 22 },
+  stepVal:  {
+    color: C.text, fontWeight: '700', fontSize: 15,
+    minWidth: 32, textAlign: 'center',
+  },
+
+  saveBtn: {
+    marginTop: 14, borderRadius: 10, paddingVertical: 12,
+    backgroundColor: C.amberDk, alignItems: 'center',
+  },
+  saveTxt: { color: '#fff', fontWeight: '700', fontSize: 14 },
 });
