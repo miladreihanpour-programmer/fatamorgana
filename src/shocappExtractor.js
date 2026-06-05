@@ -128,14 +128,32 @@ const NAME_MAP = {
   'NOCI E UVETTA DI CORINTO':                      'NOCI UVETTA',
   'SACRIPANTE NEW':                                'SACRIPANTE',
   'FIORDILATTE NEW':                               'FIORDILATTE',
+  // ── 18 specialty/seasonal flavors (mapped 2026-06-05) ──
+  'CIOCCOLATO':                                    'C. UGANDA',
+  'COCCO AL RUM':                                  'COCCO AL RUM',
+  'FICHI':                                         'FICHI',
+  'FICHI ALLA GRECA':                              'FICHI ALLA GRECA',
+  'FRAGOLINE DI BOSCO AL CALVADOS':                'FRAGOLE CALVADOS',
+  'MANDARINO':                                     'MANDARINO',
+  'MOJITO ALLA AMARENA':                           'AMARENA MOJITO',
+  'PERA AL GORGONZOLA':                            'PERA GORGONZOLA',
+  'TORRONE SALATO':                                'TORRONE SALATO',
+  'UVA FRAGOLA E ZENZERO':                         'UVA FRAGOLA',
+  'ZUCCA COI SUOI SEMI CARAMELLATI':               'ZUCCA',
+  'RICOTTA E FICHI ALLA GRECA':                    'RICOTTA E FICHI',
 };
 
 const IGNORE = new Set([
-  'PISTACCHIO SIRIANO',           // discontinued
+  'PISTACCHIO SIRIANO',                          // discontinued
   'CREMA MASCARPONE',
   'FAVE FRESCHE & PECORINO',
   'LIMONE & BASILICO',
   'STRAWBERRY FIELD FOREVER',
+  'CREMA COGNAC E NOCE MOSCATA',                 // discontinued
+  'FINOCCHIO MIELE LIQUIRIZIA',                  // discontinued
+  'GORGONZOLA',                                  // discontinued
+  'PECORINO',                                    // discontinued
+  'PANETTONE GELATO AL PISTACCHIO GLASSATO AL CIOCCOLATO BIANCO', // discontinued
 ]);
 
 const norm = s => String(s).toUpperCase().replace(/['']/g, "'").replace(/\s+/g, ' ').trim();
