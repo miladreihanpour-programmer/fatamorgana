@@ -1,28 +1,53 @@
-import { useEffect, useState } from 'react';
-import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { View, ActivityIndicator, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { getInsightsHtml } from '../../lib/api';
+import { C } from '../../lib/theme';
 
 export default function InsightsScreen() {
   const [html,       setHtml]       = useState<string | null>(null);
   const [webLoading, setWebLoading] = useState(true);
+  const [loading,    setLoading]    = useState(true);
   const [error,      setError]      = useState<string | null>(null);
 
-  useEffect(() => {
-    getInsightsHtml()
-      .then(setHtml)
-      .catch(e => setError(e.message));
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    setHtml(null);
+    setWebLoading(true);
+    try {
+      const h = await getInsightsHtml();
+      setHtml(h);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  if (error) return (
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) return (
     <View style={s.center}>
-      <Text style={s.errText}>⚠️  {error}</Text>
+      <ActivityIndicator size="large" color={C.amber} />
     </View>
   );
 
-  if (!html) return (
+  if (error) return (
     <View style={s.center}>
-      <ActivityIndicator size="large" color="#1a1a2e" />
+      {error.includes('404') ? (
+        <>
+          <Text style={s.emptyTitle}>Nessun dato ancora</Text>
+          <Text style={s.emptySub}>
+            Vai su Ordini e avvia un'estrazione per generare il report.
+          </Text>
+        </>
+      ) : (
+        <Text style={s.errText}>⚠️  {error}</Text>
+      )}
+      <TouchableOpacity style={s.retryBtn} onPress={load}>
+        <Text style={s.retryTxt}>Riprova</Text>
+      </TouchableOpacity>
     </View>
   );
 
@@ -30,14 +55,12 @@ export default function InsightsScreen() {
     <View style={{ flex: 1, backgroundColor: '#f0f4f8' }}>
       {webLoading && (
         <View style={s.loadBar}>
-          <ActivityIndicator size="small" color="#1a1a2e" />
+          <ActivityIndicator size="small" color={C.amber} />
           <Text style={s.loadTxt}>Caricamento insights…</Text>
         </View>
       )}
       <WebView
-        // Render HTML string directly — avoids CDN/CORS blocking in WebView
-        // that would prevent Chart.js from loading when loaded via a remote URI.
-        source={{ html, baseUrl: '' }}
+        source={{ html: html!, baseUrl: '' }}
         style={{ flex: 1 }}
         onLoadEnd={() => setWebLoading(false)}
         onError={() => setError('Impossibile renderizzare gli insights.')}
@@ -55,12 +78,12 @@ export default function InsightsScreen() {
 }
 
 const s = StyleSheet.create({
-  center:  { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  errText: { color: '#ef4444', textAlign: 'center', fontSize: 14, lineHeight: 22 },
-  loadBar: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    padding: 12, backgroundColor: '#fff',
-    borderBottomWidth: 1, borderBottomColor: '#e2e8f0',
-  },
-  loadTxt: { color: '#64748b', fontSize: 13 },
+  center:     { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, backgroundColor: C.bg },
+  emptyTitle: { color: C.textSub, fontSize: 16, fontWeight: '600', marginBottom: 8, textAlign: 'center' },
+  emptySub:   { color: C.muted, fontSize: 13, textAlign: 'center', lineHeight: 20, marginBottom: 24 },
+  errText:    { color: C.terra, textAlign: 'center', fontSize: 14, lineHeight: 22, marginBottom: 24 },
+  retryBtn:   { borderRadius: 10, paddingHorizontal: 28, paddingVertical: 12, backgroundColor: C.amberGlow, borderWidth: 1, borderColor: C.amberBdr },
+  retryTxt:   { color: C.amber, fontWeight: '700', fontSize: 14 },
+  loadBar:    { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
+  loadTxt:    { color: '#64748b', fontSize: 13 },
 });

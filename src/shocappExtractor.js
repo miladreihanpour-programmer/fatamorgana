@@ -145,19 +145,26 @@ const NAME_MAP = {
   'CILIEGIA':                                      'CILIEGIA',
   'PISTACCHIO LARNAKA':                            'PISTACCHIO LARNAKA',
   'NOCI UVETTA':                                   'NOCI UVETTA',
+  // ── Discontinued — track stock but never order ──
+  'PISTACCHIO SIRIANO':                            'PISTACCHIO SIRIANO',
+  // ── Reactivated flavors (removed from IGNORE) ──
+  'LIMONE & BASILICO':                             'LIMONE & BASILICO',
+  'FAVE FRESCHE & PECORINO':                       'FAVE FRESCHE & PECORINO',
+  'STRAWBERRY FIELD FOREVER':                      'STRAWBERRY FIELD FOREVER',
 };
 
+// Flavors to track in stock counts but never order (lab stopped production)
+const NO_ORDER = new Set([
+  'PISTACCHIO SIRIANO',
+]);
+
 const IGNORE = new Set([
-  'PISTACCHIO SIRIANO',                          // discontinued
   'CREMA MASCARPONE',
-  'FAVE FRESCHE & PECORINO',
-  'LIMONE & BASILICO',
-  'STRAWBERRY FIELD FOREVER',
-  'CREMA COGNAC E NOCE MOSCATA',                 // discontinued
-  'FINOCCHIO MIELE LIQUIRIZIA',                  // discontinued
-  'GORGONZOLA',                                  // discontinued
-  'PECORINO',                                    // discontinued
-  'PANETTONE GELATO AL PISTACCHIO GLASSATO AL CIOCCOLATO BIANCO', // discontinued
+  'CREMA COGNAC E NOCE MOSCATA',
+  'FINOCCHIO MIELE LIQUIRIZIA',
+  'GORGONZOLA',
+  'PECORINO',
+  'PANETTONE GELATO AL PISTACCHIO GLASSATO AL CIOCCOLATO BIANCO',
 ]);
 
 const norm = s => String(s).toUpperCase().replace(/['']/g, "'").replace(/\s+/g, ' ').trim();
@@ -517,6 +524,13 @@ function decideOrders({ stock, sold7d, sold30d, hist }) {
 
     if (A === 0 && M === 0 && B === 0) continue;
 
+    if (NO_ORDER.has(f)) {
+      decisions.push({ flavor: f, stock: B, sold7d: A, sold30d: M, hist: H,
+        dailyRate: '0.00', trend: '—', target: 0, order: 0,
+        reason: 'fuori produzione — nessun ordine' });
+      continue;
+    }
+
     const rate7d  = A / 7;
     const rate30d = M / 30;
     const blended = 0.6 * rate7d + 0.4 * rate30d;
@@ -612,20 +626,35 @@ export async function runExtraction() {
   let browser;
   try {
     const t0 = Date.now();
+
+    // Debug: log environment setup
+    logger.info(`🚀 Estrazione avviata`);
+    logger.info(`   User: ${process.env.GELATERIA_USER || '⚠️ non impostato'}`);
+    logger.info(`   Shop ID: ${process.env.SHOP_ID || '⚠️ non impostato'}`);
+    logger.info(`   Sync URL: ${process.env.SYNC_URL ? '✓' : '⚠️ non impostato'}`);
+    logger.info(`   JWT Secret: ${process.env.JWT_SECRET ? '✓' : '⚠️ non impostato'}`);
+
     // Use system Chromium on Linux servers (VPS), download on Windows/Mac dev
     const execPath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+    logger.info(`🌐 Avvio browser (headless mode)...`);
     browser = await chromium.launch({
       headless: true,
       ...(execPath ? { executablePath: execPath } : {}),
     });
     const page = await browser.newPage();
 
+    logger.info(`📝 Login...`);
     await login(page);
+    logger.info(`✓ Login riuscito`);
+    logger.info(`📋 Apertura SHOCAPP...`);
     await openShocapp(page);
+    logger.info(`✓ SHOCAPP aperto`);
 
     // Make sure we're in Sintesi mode (one row per flavor, aggregated)
+    logger.info(`🎯 Impostazione modalità Sintesi...`);
     if (!await pickDropdown(page, 'SelTabella', 'Sintesi'))
       throw new Error('Impossibile impostare modalità Sintesi');
+    logger.info(`✓ Sintesi mode impostato`);
 
     // Helper: enforce Sintesi mode + set max page size before each read.
     // clickCerca() reloads the table and resets SelTabella to Dettaglio each time,

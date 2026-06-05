@@ -214,7 +214,9 @@ function buildProgress(startedAt) {
 // ── SYNC — GitHub Actions pushes results here when done ───────────────────────
 app.post('/api/sync', auth, (req, res) => {
   const { shopId } = req;
-  const { kpis, data, pdfBase64, insightsHtml, decisions } = req.body;
+  const { kpis, data, pdfBase64, insightsHtml } = req.body;
+  // The extractor sends decisions as `data`; fall back so both field names work
+  const decisions = req.body.decisions ?? data ?? [];
 
   if (!kpis || !data) return res.status(400).json({ error: 'Dati mancanti' });
 
@@ -223,10 +225,10 @@ app.post('/api/sync', auth, (req, res) => {
     lastSync: new Date().toISOString(), kpis, data,
     pdfBase64: pdfBase64 ?? null,
     insightsHtml: insightsHtml ?? null,
-    decisions: decisions ?? [],
+    decisions,
   };
 
-  const ordered = (decisions ?? []).filter(d => d.order > 0);
+  const ordered = decisions.filter(d => d.order > 0);
   const state   = getExState(shopId);
   state.running   = false;
   state.lastResult = {
