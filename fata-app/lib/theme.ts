@@ -1,51 +1,53 @@
 /**
- * Espresso & Amber — Fata Morgana Design System
+ * Fata Morgana — Light Luxury Design System
  *
- * Based on 2026 research:
- * - Linear-style dark-first (most admired UI pattern in 2026)
- * - OLED-optimized warm blacks (saves battery, easier on eyes)
- * - 4 surface levels (industry standard for dark mode depth)
- * - Single amber accent (food psychology: warm tones feel premium/appetising)
- * - Italian heritage: espresso, amber honey, terracotta
+ * Palette drawn directly from the logo:
+ *   Orange  #E07B1A — the warm orange gelato circle
+ *   Green   #7DB32A — the olive-green circle
+ *   Brown   #5C3417 — the chocolate cone/dark circle
+ *
+ * Aesthetic: airy Italian gelateria — crisp cream whites,
+ * warm parchment surfaces, rich brand-orange accents.
  */
 export const C = {
-  // ── 4 surface levels (dark mode standard) ──────────────────────────────────
-  bg:       '#0E0A07',   // deepest  — espresso ground
-  s1:       '#171210',   // elevated — dark roast
-  s2:       '#211810',   // card     — medium roast
-  s3:       '#2C2018',   // overlay  — latte
+  // ── 4 surface levels — warm ivory / cream ────────────────────────────────
+  bg:       '#FAF8F4',   // warm ivory — main background
+  s1:       '#FFFFFF',   // pure white — elevated cards
+  s2:       '#F4EFE6',   // warm cream — secondary surface
+  s3:       '#EDE4D6',   // warm parchment — overlays / pressed states
 
-  // ── Primary accent — Amber (Italian honey, caramel, warm gold) ──────────────
-  amber:    '#E8820C',
-  amberLt:  '#F59E2A',
-  amberDk:  '#B45309',
-  amberGlow:'rgba(232,130,12,0.12)',
-  amberBdr: 'rgba(232,130,12,0.22)',
+  // ── Primary accent — logo orange, refined for elegance ────────────────────
+  amber:    '#C86D0A',   // deep brand bronze-orange (buttons, highlights)
+  amberLt:  '#E07B1A',   // logo orange (brighter accents)
+  amberDk:  '#8C4A06',   // dark bronze (text on light, pressed states)
+  amberGlow:'rgba(200,109,10,0.10)',
+  amberBdr: 'rgba(200,109,10,0.24)',
 
-  // ── Status colours ──────────────────────────────────────────────────────────
-  sage:     '#5C7A54',   // success / positive  (pistachio green)
-  sageLt:   '#7A9E70',
-  sageBdr:  'rgba(92,122,84,0.25)',
+  // ── Secondary — logo olive-green (success / positive) ─────────────────────
+  sage:     '#5A8C1A',   // deep green
+  sageLt:   '#7DB32A',   // logo green
+  sageBdr:  'rgba(90,140,26,0.22)',
 
-  terra:    '#C2603A',   // warning / alert     (terracotta)
-  terraLt:  '#D4845A',
-  terraBdr: 'rgba(194,96,58,0.25)',
+  // ── Alert — terracotta (warning / negative) ───────────────────────────────
+  terra:    '#B83A1A',
+  terraLt:  '#D4563A',
+  terraBdr: 'rgba(184,58,26,0.22)',
 
-  // ── Typography ──────────────────────────────────────────────────────────────
-  text:     '#F0EAE4',   // warm off-white (not harsh #fff)
-  textSub:  '#A08070',   // warm medium brown
-  muted:    '#6B5548',   // dark muted
+  // ── Typography ────────────────────────────────────────────────────────────
+  text:     '#1C1008',   // very dark warm brown — headings
+  textSub:  '#6B4A28',   // medium warm brown — body
+  muted:    '#A88060',   // light warm brown — captions / placeholders
 
-  // ── Glass surfaces ──────────────────────────────────────────────────────────
-  glass:    'rgba(255,255,255,0.04)',
-  glassBdr: 'rgba(255,255,255,0.08)',
+  // ── Dividers & glass ──────────────────────────────────────────────────────
+  glass:    'rgba(28,18,8,0.03)',
+  glassBdr: 'rgba(28,18,8,0.09)',
 
-  // ── Gradients ──────────────────────────────────────────────────────────────
-  gradBg:    ['#0E0A07', '#171210', '#0E0A07'] as const,
-  gradAmber: ['#E8820C', '#B45309'] as const,
-  gradCard:  ['#211810', '#191209'] as const,
-  gradSage:  ['#5C7A54', '#3D5238'] as const,
+  // ── Gradients ─────────────────────────────────────────────────────────────
+  gradBg:    ['#FAF8F4', '#F4EFE6', '#FAF8F4'] as const,
+  gradAmber: ['#E07B1A', '#C86D0A'] as const,   // orange → deep bronze
+  gradCard:  ['#FFFFFF', '#F9F3EA'] as const,
+  gradSage:  ['#7DB32A', '#5A8C1A'] as const,
 
-  // ── Shadow ──────────────────────────────────────────────────────────────────
-  shadow: 'rgba(0,0,0,0.5)',
+  // ── Shadow ────────────────────────────────────────────────────────────────
+  shadow: 'rgba(40,15,5,0.10)',
 } as const;

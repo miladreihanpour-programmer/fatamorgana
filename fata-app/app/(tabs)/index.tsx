@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   ScrollView, View, Text, TouchableOpacity,
-  StyleSheet, RefreshControl, ActivityIndicator,
+  StyleSheet, RefreshControl, ActivityIndicator, Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BarChart } from 'react-native-gifted-charts';
@@ -99,19 +99,21 @@ export default function DashboardScreen() {
       >
         {/* Header */}
         <View style={s.header}>
-          <View>
-            <Text style={s.headerTitle}>{shopName ?? 'Dashboard'}</Text>
+          <Image
+            source={require('../../assets/logo.png')}
+            style={s.logo}
+            resizeMode="contain"
+          />
+          <View style={{ alignItems: 'flex-end' }}>
+            <Pill label="● live" color={C.sageLt} />
             <Text style={s.headerSub}>Aggiornato {updated}</Text>
           </View>
-          <Pill label="● live" color={C.sageLt} />
         </View>
 
         <View style={s.body}>
 
           {/* Hero card — most important number */}
-          <LinearGradient colors={['#1C1208', '#0E0A07']} style={s.heroCard}>
-            {/* amber top line */}
-            <View style={{ height: 1.5, backgroundColor: C.amber, marginBottom: 16, opacity: 0.6 }} />
+          <LinearGradient colors={['#E07B1A', '#B85C08']} style={s.heroCard}>
             <Text style={s.heroLabel}>VASCHETTE DA ORDINARE</Text>
             <Text style={s.heroVal}>{kpis.totalOrder}</Text>
             <View style={s.heroRow}>
@@ -156,6 +158,7 @@ export default function DashboardScreen() {
                   yAxisThickness={0}
                   yAxisTextStyle={{ color: C.muted, fontSize: 10 }}
                   xAxisLabelTextStyle={{ color: C.textSub, fontSize: 8, width: 44, textAlign: 'center' }}
+                  gradientColor={C.amberGlow}
                   noOfSections={4}
                   height={160}
                   isAnimated
@@ -201,22 +204,21 @@ export default function DashboardScreen() {
 
 const s = StyleSheet.create({
   fill:   { flex: 1 },
-  header: { paddingHorizontal: 22, paddingTop: 56, paddingBottom: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.bg },
-  headerTitle: { color: C.text, fontSize: 24, fontWeight: '700' },
-  headerSub:   { color: C.muted, fontSize: 11, marginTop: 3 },
+  header:    { paddingHorizontal: 20, paddingTop: 54, paddingBottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.bg },
+  logo:      { width: 150, height: 52 },
+  headerSub: { color: C.muted, fontSize: 10, marginTop: 5 },
   body:   { paddingHorizontal: 16 },
 
   heroCard: {
-    borderRadius: 14, padding: 20, marginBottom: 16,
-    borderWidth: 1, borderColor: C.amberBdr,
+    borderRadius: 16, padding: 22, marginBottom: 16,
     overflow: 'hidden',
   },
-  heroLabel: { color: C.amber, fontSize: 9, fontWeight: '700', letterSpacing: 3, marginBottom: 6 },
-  heroVal:   { color: C.text, fontSize: 64, fontWeight: '800', lineHeight: 72, marginBottom: 16 },
+  heroLabel: { color: 'rgba(255,255,255,0.80)', fontSize: 9, fontWeight: '700', letterSpacing: 3, marginBottom: 8 },
+  heroVal:   { color: '#FFFFFF', fontSize: 68, fontWeight: '800', lineHeight: 76, marginBottom: 18 },
   heroRow:   { flexDirection: 'row' },
-  heroStatN: { color: C.text, fontSize: 20, fontWeight: '700' },
-  heroStatL: { color: C.muted, fontSize: 10, marginTop: 2 },
-  heroDiv:   { width: 1, height: 36, backgroundColor: C.glassBdr, alignSelf: 'center' },
+  heroStatN: { color: '#FFFFFF', fontSize: 22, fontWeight: '700' },
+  heroStatL: { color: 'rgba(255,255,255,0.70)', fontSize: 10, marginTop: 2 },
+  heroDiv:   { width: 1, height: 36, backgroundColor: 'rgba(255,255,255,0.25)', alignSelf: 'center' },
 
   statGrid:    { flexDirection: 'row', gap: 10 },
   section:     { marginTop: 24 },
