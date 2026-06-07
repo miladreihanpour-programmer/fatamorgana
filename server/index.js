@@ -32,24 +32,31 @@ const GH_REPO      = process.env.GITHUB_REPO  ?? '';
 const RENDER_URL   = process.env.RENDER_URL   ?? '';
 
 // ── Shop registry ─────────────────────────────────────────────────────────────
-// Loaded from SHOPS_CONFIG env var (JSON) or falls back to single shop (.env)
+// Primary shop always comes from GELATERIA_USER / GELATERIA_PASS env vars.
+// Additional shops are merged in from SHOPS_CONFIG (JSON array) — no need to
+// re-enter the primary shop there.  SHOP_NAME customises the primary shop name.
 function loadShops() {
+  const shops = [];
+
+  if (process.env.GELATERIA_USER) {
+    shops.push({
+      id:   process.env.GELATERIA_USER,
+      name: process.env.SHOP_NAME ?? 'Fata Morgana',
+      user: process.env.GELATERIA_USER,
+      pass: process.env.GELATERIA_PASS ?? '',
+    });
+  }
+
   try {
     if (process.env.SHOPS_CONFIG) {
-      return JSON.parse(process.env.SHOPS_CONFIG);
+      const extra = JSON.parse(process.env.SHOPS_CONFIG);
+      for (const s of extra) {
+        if (!shops.some(e => e.user === s.user)) shops.push(s);
+      }
     }
   } catch (e) { console.warn('SHOPS_CONFIG parse error:', e.message); }
 
-  // Fallback: single shop from legacy env vars
-  if (process.env.GELATERIA_USER) {
-    return [{
-      id:   process.env.GELATERIA_USER,
-      name: 'Fata Morgana',
-      user: process.env.GELATERIA_USER,
-      pass: process.env.GELATERIA_PASS,
-    }];
-  }
-  return [];
+  return shops;
 }
 
 const SHOPS = loadShops();
