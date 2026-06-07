@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ActivityIndicator,
-  Alert, ScrollView,
+  Alert, ScrollView, Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -47,12 +47,11 @@ export default function LoginScreen() {
 
           {/* Brand mark */}
           <View style={s.brand}>
-            <View style={s.logoRing}>
-              <Text style={s.logoLetters}>FM</Text>
-              {/* Amber glow ring */}
-              <View style={s.logoGlow} />
-            </View>
-            <Text style={s.appName}>Fata Morgana</Text>
+            <Image
+              source={require('../assets/logo.png')}
+              style={s.logoImg}
+              resizeMode="contain"
+            />
             <Text style={s.appSub}>Gestione Inventario</Text>
           </View>
 
@@ -121,21 +120,9 @@ const s = StyleSheet.create({
   scroll: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 28, paddingVertical: 48 },
 
   // Brand
-  brand: { alignItems: 'center', marginBottom: 48 },
-  logoRing: {
-    width: 80, height: 80, borderRadius: 40,
-    borderWidth: 1.5, borderColor: C.amberBdr,
-    backgroundColor: C.amberGlow,
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 20,
-  },
-  logoGlow: {
-    position: 'absolute', width: 80, height: 80, borderRadius: 40,
-    backgroundColor: C.amber, opacity: 0.06,
-  },
-  logoLetters: { color: C.amber, fontSize: 22, fontWeight: '700', letterSpacing: 2 },
-  appName:     { color: C.text, fontSize: 26, fontWeight: '700', letterSpacing: 0.5 },
-  appSub:      { color: C.muted, fontSize: 13, marginTop: 6, letterSpacing: 0.3 },
+  brand:   { alignItems: 'center', marginBottom: 40 },
+  logoImg: { width: 180, height: 72, marginBottom: 12 },
+  appSub:  { color: C.muted, fontSize: 13, letterSpacing: 0.3 },
 
   // Form
   form: {

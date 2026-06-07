@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   ScrollView, View, Text, TouchableOpacity,
-  StyleSheet, RefreshControl, ActivityIndicator, Image,
+  StyleSheet, RefreshControl, ActivityIndicator, Image, Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BarChart } from 'react-native-gifted-charts';
-import { getInsights, getShopName, type InsightsResponse } from '../../lib/api';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import { getInsights, getShopName, clearToken, type InsightsResponse } from '../../lib/api';
 import { C } from '../../lib/theme';
 
 /* ── Pill label ──────────────────────────────────────────────────────────────*/
@@ -38,6 +40,7 @@ const sc = StyleSheet.create({
 
 /* ── Screen ──────────────────────────────────────────────────────────────────*/
 export default function DashboardScreen() {
+  const router = useRouter();
   const [data,       setData]       = useState<InsightsResponse | null>(null);
   const [loading,    setLoading]    = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -45,6 +48,16 @@ export default function DashboardScreen() {
   const [shopName,   setShopName]   = useState<string | null>(null);
 
   useEffect(() => { getShopName().then(setShopName); }, []);
+
+  function handleLogout() {
+    Alert.alert('Esci', 'Vuoi disconnetterti?', [
+      { text: 'Annulla', style: 'cancel' },
+      { text: 'Esci', style: 'destructive', onPress: async () => {
+        await clearToken();
+        router.replace('/login');
+      }},
+    ]);
+  }
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -104,8 +117,14 @@ export default function DashboardScreen() {
             style={s.logo}
             resizeMode="contain"
           />
-          <View style={{ alignItems: 'flex-end' }}>
-            <Pill label="● live" color={C.sageLt} />
+          <View style={{ alignItems: 'flex-end', gap: 4 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Pill label="● live" color={C.sageLt} />
+              <TouchableOpacity onPress={handleLogout} hitSlop={10}>
+                <Ionicons name="log-out-outline" size={20} color={C.muted} />
+              </TouchableOpacity>
+            </View>
+            {shopName && <Text style={s.shopName}>{shopName}</Text>}
             <Text style={s.headerSub}>Aggiornato {updated}</Text>
           </View>
         </View>
@@ -206,7 +225,8 @@ const s = StyleSheet.create({
   fill:   { flex: 1 },
   header:    { paddingHorizontal: 20, paddingTop: 54, paddingBottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.bg },
   logo:      { width: 150, height: 52 },
-  headerSub: { color: C.muted, fontSize: 10, marginTop: 5 },
+  shopName:  { color: C.textSub, fontSize: 11, fontWeight: '600' },
+  headerSub: { color: C.muted, fontSize: 10 },
   body:   { paddingHorizontal: 16 },
 
   heroCard: {
