@@ -495,14 +495,14 @@ function aggregateAndMap(rawRows, set) {
 // Only consider flavors with actual recent demand (A > 0 or B > 0)
 // ─── Predictive order logic ──────────────────────────────────────────────────
 //
-// Formula (blended forecast + trend-aware safety):
+// Formula (blended forecast + lean safety):
 //
 //   rate7d  = A / 7          (daily rate, last 7 days)
 //   rate30d = M / 30         (daily rate, last 30 days — more stable baseline)
 //   blended = 0.6*rate7d + 0.4*rate30d   (60% recent, 40% medium-term)
 //   forecast = blended * 7   (weekly units needed)
 //   trend   = rate7d / rate30d  (>1 demand rising, <1 falling) — clamped [0.5, 2.0]
-//   safety  = max(1, ceil(blended * 2))  (covers ~2 days of demand)
+//   safety  = A >= 7 ? 1 : 0   (1 unit buffer for fast movers only; 0 for slow movers)
 //   target  = ceil(forecast) + safety
 //   order   = max(0, target - B)
 //
@@ -561,7 +561,9 @@ function decideOrders({ stock, sold7d, sold30d, hist }) {
 
     } else {
       const forecast = blended * 7;              // expected weekly demand
-      const safety   = Math.max(1, Math.ceil(blended * 2));  // 2-day buffer
+      // Safety: 1 unit only for fast movers (≥7 sold/week ≈ 1/day).
+      // Slow movers get zero buffer — just replenish what was sold.
+      const safety   = A >= 7 ? 1 : 0;
       const target   = Math.ceil(forecast) + safety;
       order = Math.max(0, target - B);
 
