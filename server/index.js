@@ -73,7 +73,7 @@ let shopHistory = {};      // { shopId: [ ...history rows ] }
 let extractionState = {};  // { shopId: { running, startedAt, lastResult, error } }
 
 function getStore(shopId) {
-  if (!shopData[shopId]) shopData[shopId] = { lastSync: null, kpis: null, data: [], pdfBase64: null, xlsxBase64: null, insightsHtml: null, decisions: [], varie: {} };
+  if (!shopData[shopId]) shopData[shopId] = { lastSync: null, kpis: null, data: [], pdfBase64: null, xlsxBase64: null, insightsHtml: null, decisions: [], varie: {}, urgent: [] };
   return shopData[shopId];
 }
 
@@ -238,7 +238,8 @@ app.post('/api/sync', auth, (req, res) => {
     xlsxBase64:   xlsxBase64 ?? null,
     insightsHtml: insightsHtml ?? null,
     decisions,
-    varie: prev.varie ?? {},
+    varie:  prev.varie  ?? {},
+    urgent: prev.urgent ?? [],
   };
 
   const ordered = decisions.filter(d => d.order > 0);
@@ -285,51 +286,52 @@ app.get('/api/insights/html', auth, (req, res) => {
 
 app.get('/api/orders/pdf', auth, async (req, res) => {
   const store = getStore(req.shopId);
-  const varie = store.varie ?? {};
-  const hasVarie = Object.values(varie).some(v => v > 0);
+  const varie  = store.varie  ?? {};
+  const urgent = store.urgent ?? [];
+  const norm = s => String(s).toUpperCase().replace(/['']/g, "'").replace(/\s+/g, ' ').trim();
+  const urgentSet = new Set(urgent.map(norm));
 
-  // If Varie are set and we have the filled xlsx, regenerate PDF with Varie injected
-  if (hasVarie && store.xlsxBase64) {
+  // Regenerate from xlsx whenever we have one (picks up Varie + urgent highlights)
+  if (store.xlsxBase64) {
     let tmpXlsx;
     try {
-      const norm = s => String(s).toUpperCase().replace(/['']/g, "'").replace(/\s+/g, ' ').trim();
-      const normVarie = {};
-      for (const [k, v] of Object.entries(varie)) if (v > 0) normVarie[norm(k)] = v;
-
       const xlsxBuf = Buffer.from(store.xlsxBase64, 'base64');
       const wb = XLSX.read(xlsxBuf, { type: 'buffer' });
       const ws = wb.Sheets['Flavors'];
       const ref = XLSX.utils.decode_range(ws['!ref']);
 
-      // Inject Varie quantities into column C (Creme/Varie), ORDINE column D
-      for (let R = ref.s.r; R <= ref.e.r; R++) {
-        const fc = XLSX.utils.encode_cell({ r: R, c: 2 }); // flavor name (col C)
-        const oc = XLSX.utils.encode_cell({ r: R, c: 3 }); // ordine (col D)
-        if (!ws[fc]?.v) continue;
-        const key = norm(ws[fc].v);
-        if (['ORDINE', 'TOTAL:', 'VARIE', 'CREME'].includes(key)) continue;
-        const qty = normVarie[key];
-        if (qty > 0) ws[oc] = { t: 'n', v: qty };
+      const hasVarie = Object.values(varie).some(v => v > 0);
+      if (hasVarie) {
+        const normVarie = {};
+        for (const [k, v] of Object.entries(varie)) if (v > 0) normVarie[norm(k)] = v;
+        for (let R = ref.s.r; R <= ref.e.r; R++) {
+          const fc = XLSX.utils.encode_cell({ r: R, c: 2 });
+          const oc = XLSX.utils.encode_cell({ r: R, c: 3 });
+          if (!ws[fc]?.v) continue;
+          const key = norm(ws[fc].v);
+          if (['ORDINE', 'TOTAL:', 'VARIE', 'CREME'].includes(key)) continue;
+          const qty = normVarie[key];
+          if (qty > 0) ws[oc] = { t: 'n', v: qty };
+        }
       }
 
       tmpXlsx = path.join(os.tmpdir(), `fata_${req.shopId}_${Date.now()}.xlsx`);
       XLSX.writeFile(wb, tmpXlsx);
 
-      const pdfPath = await generateOrderPdf(tmpXlsx);
+      const pdfPath = await generateOrderPdf(tmpXlsx, urgentSet);
       const buf = fs.readFileSync(pdfPath);
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="ordine_${req.shopId}_${new Date().toISOString().slice(0,10)}.pdf"`);
       return res.send(buf);
     } catch (e) {
       console.error('PDF regen error:', e.message);
-      // Fall through to stored PDF on error
     } finally {
       if (tmpXlsx) try { fs.unlinkSync(tmpXlsx); } catch {}
     }
   }
 
-  // Fallback: return the stored PDF from last extraction
-  if (!store.pdfBase64) return res.status(404).json({ error: 'PDF non trovato — esegui prima un\'estrazione' });
+  // Fallback: stored PDF from last extraction (no highlights)
+  if (!store.pdfBase64) return res.status(404).json({ error: "PDF non trovato — esegui prima un'estrazione" });
   const buf = Buffer.from(store.pdfBase64, 'base64');
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="ordine_${req.shopId}_${new Date().toISOString().slice(0,10)}.pdf"`);
@@ -354,6 +356,21 @@ app.post('/api/varie', auth, (req, res) => {
   saveAll();
   console.log(`📝 Varie aggiornate: ${req.shopId} — ${Object.entries(quantities).filter(([,v]) => v > 0).length} items`);
   res.json({ ok: true });
+});
+
+// ── Urgent — must-have flavors to mark with ★ in PDF ─────────────────────────
+app.get('/api/urgent', auth, (req, res) => {
+  res.json(getStore(req.shopId).urgent ?? []);
+});
+
+app.post('/api/urgent', auth, (req, res) => {
+  const { flavors } = req.body ?? {};
+  if (!Array.isArray(flavors)) return res.status(400).json({ error: 'flavors array required' });
+  const store = getStore(req.shopId);
+  store.urgent = flavors;
+  saveAll();
+  console.log(`⭐ Urgent: ${req.shopId} — ${flavors.length} flavors marked`);
+  res.json({ ok: true, count: flavors.length });
 });
 
 // ── List shops (for admin — no auth needed, shows only names not credentials) ──

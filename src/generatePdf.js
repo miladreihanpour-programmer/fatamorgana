@@ -25,6 +25,7 @@ const CAT_BG    = '#dce8f0';
 const CAT_ORD   = '#c8dde8';
 const ROW_ALT   = '#f7fafc';
 const WRITE_BOX = '#fffde7';
+const URGENT_BG = '#ffe0b2';
 const GRID      = '#b0c8d8';
 const TEXT_DARK = '#1a1a2e';
 const TEXT_RED  = '#c0392b';
@@ -43,7 +44,8 @@ function displayName(flavor) {
 // ── Load flavors + ORDINE quantities from a workbook path ────────────────────
 // If filledPath is provided (the filled template), quantities come from the
 // ORDINE column already written there. Falls back to TEMPLATE_PATH if not.
-function loadFlavors(filledPath) {
+function loadFlavors(filledPath, urgentSet = new Set()) {
+  const norm = s => String(s).toUpperCase().replace(/['']/g, "'").replace(/\s+/g, ' ').trim();
   const wb   = XLSX.readFile(filledPath ?? TEMPLATE_PATH);
   const ws   = wb.Sheets['Flavors'];
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
@@ -58,9 +60,10 @@ function loadFlavors(filledPath) {
       if (['ORDINE', 'TOTAL:'].includes(vStr)) continue;
       if (vStr === 'Varie') { pastVarie = true; continue; }
       items.push({
-        flavor:  vStr,
-        qty:     r[ci * 2 + 1] > 0 ? Number(r[ci * 2 + 1]) : null,
-        isVarie: pastVarie,
+        flavor:   vStr,
+        qty:      r[ci * 2 + 1] > 0 ? Number(r[ci * 2 + 1]) : null,
+        isVarie:  pastVarie,
+        isUrgent: urgentSet.size > 0 && urgentSet.has(norm(vStr)),
       });
     }
     return { name, items };
@@ -102,11 +105,11 @@ function fitFontSize(doc, text, availableW, font, maxSize, minSize = 6) {
 // ── Main ──────────────────────────────────────────────────────────────────────
 // filledPath: path to shocapp_template_filled.xlsx (quantities already written).
 // Falls back to reading from the blank template + orderMap if filledPath is null.
-export async function generateOrderPdf(filledPath = null) {
+export async function generateOrderPdf(filledPath = null, urgentSet = new Set()) {
   if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 
   const OUT  = path.join(OUTPUT_DIR, 'shocapp_da_ordinare.pdf');
-  const cats = loadFlavors(filledPath);
+  const cats = loadFlavors(filledPath, urgentSet);
 
   // ── A3 landscape ──────────────────────────────────────────────────────────
   const PW = 1190.55, PH = 841.89;
@@ -173,19 +176,19 @@ export async function generateOrderPdf(filledPath = null) {
       const qty  = item?.qty ?? null;
       if (qty && !item?.isVarie) grand += qty;
 
-      const flavorBg = ri % 2 === 1 ? ROW_ALT : '#ffffff';
+      const flavorBg = item?.isUrgent ? URGENT_BG : (ri % 2 === 1 ? ROW_ALT : '#ffffff');
       fillRect(doc, x, curY, FLAVOR_W, ROW_H, flavorBg);
-      fillRect(doc, x + FLAVOR_W, curY, ORDINE_W, ROW_H, WRITE_BOX);
+      fillRect(doc, x + FLAVOR_W, curY, ORDINE_W, ROW_H, item?.isUrgent ? URGENT_BG : WRITE_BOX);
       strokeRect(doc, x,            curY, FLAVOR_W, ROW_H);
       strokeRect(doc, x + FLAVOR_W, curY, ORDINE_W, ROW_H);
 
       if (item) {
-        const display = displayName(item.flavor);
+        const display = item.isUrgent ? `★ ${displayName(item.flavor)}` : displayName(item.flavor);
         const size = fitFontSize(doc, display, FLAVOR_TEXT_W, 'Helvetica-Bold', FONT_SZ, 6.5);
 
         txt(doc, display,
             x, curY + (ROW_H - size) / 2,
-            FLAVOR_W, size, 'Helvetica-Bold', TEXT_DARK, 'left');
+            FLAVOR_W, size, 'Helvetica-Bold', item.isUrgent ? TEXT_RED : TEXT_DARK, 'left');
 
         if (qty != null && qty > 0) {
           txt(doc, qty,

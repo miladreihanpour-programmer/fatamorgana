@@ -6,8 +6,16 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import { triggerExtraction, getExtractionStatus, getPdfUrl, getVarie, saveVarie, type ExtractionStatus } from '../../lib/api';
+import { triggerExtraction, getExtractionStatus, getPdfUrl, getVarie, saveVarie, getInsights, saveUrgent, type ExtractionStatus } from '../../lib/api';
 import { C } from '../../lib/theme';
+
+// Must-have classics — flagged with ★ in PDF when stock ≤ 2
+const MUST_HAVE_FLAVORS = [
+  'STRACCIATELLA', 'NOCCIOLA', 'BACIO', 'FIORDILATTE',
+  'FRAGOLA', 'LIMONE', "CAFFE'",
+  'PISTACCHIO LARNAKA', 'P.BRONTE',
+  'C. PASTICCIERA PARISI', 'C. AL LATTE GELATO',
+];
 
 const VARIE_ITEMS = [
   'CAPRESE', 'CHICCHIAINI', 'CIOCCOLATA CALDA', 'COPPETTA GRANDE', 'COPPETTA PICCOLA',
@@ -21,9 +29,12 @@ export default function OrdersScreen() {
   const [status,      setStatus]      = useState<ExtractionStatus | null>(null);
   const [starting,    setStarting]    = useState(false);
   const [downloading, setDownloading] = useState(false);
-  const [varie,       setVarie]       = useState<Record<string, number>>({});
-  const [varieSaving, setVarieSaving] = useState(false);
-  const [varieSaved,  setVarieSaved]  = useState(false);
+  const [varie,        setVarie]        = useState<Record<string, number>>({});
+  const [varieSaving,  setVarieSaving]  = useState(false);
+  const [varieSaved,   setVarieSaved]   = useState(false);
+  const [urgentSaving, setUrgentSaving] = useState(false);
+  const [urgentSaved,  setUrgentSaved]  = useState(false);
+  const [urgentCount,  setUrgentCount]  = useState(0);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   async function fetchStatus() {
@@ -66,6 +77,25 @@ export default function OrdersScreen() {
       Alert.alert('Errore', e.message);
     } finally {
       setVarieSaving(false);
+    }
+  }
+
+  async function handleMarkUrgent() {
+    setUrgentSaving(true);
+    try {
+      const insights = await getInsights();
+      const urgent = MUST_HAVE_FLAVORS.filter(f => {
+        const d = insights.data.find(x => x.flavor === f);
+        return d && d.stock <= 2;
+      });
+      await saveUrgent(urgent);
+      setUrgentCount(urgent.length);
+      setUrgentSaved(true);
+      setTimeout(() => setUrgentSaved(false), 4000);
+    } catch (e: any) {
+      Alert.alert('Errore', e.message);
+    } finally {
+      setUrgentSaving(false);
     }
   }
 
@@ -192,6 +222,36 @@ export default function OrdersScreen() {
             }
           </TouchableOpacity>
 
+          {/* Urgent priority button */}
+          <TouchableOpacity
+            onPress={handleMarkUrgent}
+            disabled={urgentSaving}
+            activeOpacity={0.8}
+            style={[s.urgentRow, urgentSaved && { borderLeftColor: C.sageLt }]}
+          >
+            {urgentSaving
+              ? <ActivityIndicator color={C.amber} />
+              : <>
+                  <View style={s.urgentIcon}>
+                    <Text style={{ fontSize: 18 }}>⭐</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.urgentTitle}>
+                      {urgentSaved
+                        ? `✓ ${urgentCount} gusti segnati ★ nel PDF`
+                        : 'Segna Priorità nel PDF'}
+                    </Text>
+                    <Text style={s.urgentSub}>
+                      {urgentSaved
+                        ? 'Scarica il PDF per vedere gli asterischi'
+                        : 'Classici esauriti/bassi — asterisco ★ nel PDF'}
+                    </Text>
+                  </View>
+                  <Text style={{ color: C.muted, fontSize: 20 }}>›</Text>
+                </>
+            }
+          </TouchableOpacity>
+
           {/* Varie — manual quantities */}
           <View style={s.varieCard}>
             <Text style={s.varieTitle}>Varie</Text>
@@ -281,6 +341,20 @@ const s = StyleSheet.create({
   },
   pdfTitle: { color: C.text, fontWeight: '600', fontSize: 14 },
   pdfSub:   { color: C.muted, fontSize: 11, marginTop: 2 },
+
+  urgentRow: {
+    backgroundColor: C.s2, borderRadius: 12, padding: 16, marginTop: 8,
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    borderWidth: 1, borderColor: C.glassBdr,
+    borderLeftWidth: 3, borderLeftColor: C.amberBdr,
+  },
+  urgentIcon: {
+    width: 42, height: 42, borderRadius: 10,
+    backgroundColor: C.amberGlow, borderWidth: 1, borderColor: C.amberBdr,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  urgentTitle: { color: C.text, fontWeight: '600', fontSize: 14 },
+  urgentSub:   { color: C.muted, fontSize: 11, marginTop: 2 },
 
   varieCard: {
     backgroundColor: C.s2, borderRadius: 14, padding: 16, marginTop: 12,

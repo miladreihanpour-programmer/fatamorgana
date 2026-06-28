@@ -86,6 +86,9 @@ export const getHistory          = () => req<HistoryRow[]>('GET', '/api/history'
 export const getVarie            = () => req<Record<string, number>>('GET', '/api/varie');
 export const saveVarie           = (quantities: Record<string, number>) =>
   req<{ ok: boolean }>('POST', '/api/varie', { quantities });
+export const getUrgent           = () => req<string[]>('GET', '/api/urgent');
+export const saveUrgent          = (flavors: string[]) =>
+  req<{ ok: boolean; count: number }>('POST', '/api/urgent', { flavors });
 
 export async function getPdfUrl() {
   const token = await getToken();
