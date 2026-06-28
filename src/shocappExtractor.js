@@ -502,7 +502,7 @@ function aggregateAndMap(rawRows, set) {
 //   blended = 0.6*rate7d + 0.4*rate30d   (60% recent, 40% medium-term)
 //   forecast = blended * 7   (weekly units needed)
 //   trend   = rate7d / rate30d  (>1 demand rising, <1 falling) — clamped [0.5, 2.0]
-//   safety  = A >= 7 ? 1 : 0   (1 unit buffer for fast movers only; 0 for slow movers)
+//   safety  = max(1, ceil(blended))  (1 full day of buffer for every selling flavor)
 //   target  = ceil(forecast) + safety
 //   order   = max(0, target - B)
 //
