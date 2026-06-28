@@ -190,7 +190,7 @@ export async function generateOrderPdf(filledPath = null) {
         if (qty != null && qty > 0) {
           txt(doc, qty,
               x + FLAVOR_W, curY + (ROW_H - QTY_SZ) / 2,
-              ORDINE_W, QTY_SZ, 'Helvetica-Bold', TEXT_RED, 'center', 0);
+              ORDINE_W, QTY_SZ, 'Helvetica-Bold', TEXT_RED, 'left');
         }
       }
     }
@@ -212,7 +212,7 @@ export async function generateOrderPdf(filledPath = null) {
   if (grand > 0) {
     txt(doc, grand,
         ML + FLAVOR_W, curY + (ROW_H - QTY_SZ) / 2,
-        UW - FLAVOR_W, QTY_SZ, 'Helvetica-Bold', TEXT_RED, 'center', 0);
+        UW - FLAVOR_W, QTY_SZ, 'Helvetica-Bold', TEXT_RED, 'left');
   }
   curY += ROW_H + 6;
 

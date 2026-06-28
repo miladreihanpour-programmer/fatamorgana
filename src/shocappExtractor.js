@@ -561,9 +561,8 @@ function decideOrders({ stock, sold7d, sold30d, hist }) {
 
     } else {
       const forecast = blended * 7;              // expected weekly demand
-      // Safety: 1 unit only for fast movers (≥7 sold/week ≈ 1/day).
-      // Slow movers get zero buffer — just replenish what was sold.
-      const safety   = A >= 7 ? 1 : 0;
+      // Safety: 1 full day of buffer for every selling flavor (min 1 unit).
+      const safety   = Math.max(1, Math.ceil(blended));
       const target   = Math.ceil(forecast) + safety;
       order = Math.max(0, target - B);
 
@@ -580,11 +579,25 @@ function decideOrders({ stock, sold7d, sold30d, hist }) {
       hist: H,
       dailyRate: blended.toFixed(2),
       trend: trendLabel,
-      target: M > 0 || A > 0 ? Math.ceil(blended * 7) + Math.max(1, Math.ceil(blended * 2)) : 0,
+      target: M > 0 || A > 0 ? Math.ceil(blended * 7) + Math.max(1, Math.ceil(blended)) : 0,
       order,
       reason,
     });
   }
+
+  // Cap P.BRONTE at 6 vaschette; redistribute excess to PISTACCHIO LARNAKA
+  const bronte  = decisions.find(d => d.flavor === 'P.BRONTE');
+  const larnaka = decisions.find(d => d.flavor === 'PISTACCHIO LARNAKA');
+  if (bronte && bronte.order > 6) {
+    const excess = bronte.order - 6;
+    bronte.order  = 6;
+    bronte.reason += ` — cap 6 vasch, ${excess} ridistribuiti a LARNAKA`;
+    if (larnaka) {
+      larnaka.order  += excess;
+      larnaka.reason += ` +${excess} da P.BRONTE (cap)`;
+    }
+  }
+
   return decisions.sort((a, b) => b.order - a.order || b.sold7d - a.sold7d);
 }
 
